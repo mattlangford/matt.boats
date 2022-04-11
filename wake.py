@@ -1,11 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 class Grid(object):
     def __init__(self, dim, resolution):
         self.dim = dim
         self.grid = np.zeros((dim, dim))
-        self.resolution = resolution # m/cell
+        self.resolution = resolution  # m/cell
 
     def show(self, disp=True):
         flat = self.grid.flatten()
@@ -44,6 +45,7 @@ class Grid(object):
 
         row, col = row_col.astype(np.int)
         return self.grid[row, col]
+
     def get_xy(self, xy):
         return self.get(self.xy_to_grid(xy))
 
@@ -66,7 +68,8 @@ class Wavefront(object):
 
         self.max_speed = max_speed
         self.wave_speeds = np.linspace(0.0, self.max_speed, 10)[1:]
-        self.wavelengths = np.array([self.wave_speed_to_length(s) for s in self.wave_speeds])
+        self.wavelengths = np.array(
+            [self.wave_speed_to_length(s) for s in self.wave_speeds])
 
     def at(self, t, xy):
         xy = np.array(xy).reshape(-1, 2)
@@ -90,16 +93,19 @@ class Wavefront(object):
             end_x = 0.1
             end = np.maximum(x - end_x, np.zeros_like(x))
             scale = 0.9 * length / self.wavelengths[-1]
-            total += scale * np.exp(-k1 * end) * np.exp(-k2 * dist) * np.sin(phase)
+            total += scale * np.exp(-k1 * end) * \
+                np.exp(-k2 * dist) * np.sin(phase)
 
         return total
 
     def wave_length_to_speed(self, wavelength):
         G = 9.81
         return np.sqrt((G * wavelength) / (2 * np.pi))
+
     def wave_speed_to_length(self, wave_speed):
         G = 9.81
         return wave_speed * wave_speed * 2 * np.pi / G
+
 
 class Path(object):
     def __init__(self, start, end, speed):
@@ -118,13 +124,15 @@ class Path(object):
         diff = (xy - self.start)
         l = np.linalg.norm(diff)
         if l > 0.1 and abs((diff / l).dot(self.direction)) < 0.99:
-            print(f"xy: {xy}, start: {self.start}, error: {diff.dot(self.direction)}")
+            print(
+                f"xy: {xy}, start: {self.start}, error: {diff.dot(self.direction)}")
             raise Exception()
 
         return l / self.speed
 
     def offset(self, xy, l):
         return xy + self.direction * l
+
     def perp(self):
         return np.array([-self.direction[1], self.direction[0]])
 
@@ -159,8 +167,10 @@ for i, t_now in enumerate(ts):
     start_xy = p.at(t_now - 10)
     perp = p.perp()
     dist = np.linalg.norm(start_xy - xy)
-    r0, c0 = grid.xy_to_grid(start_xy + perp * dist * np.tan(np.radians(19.47)))
-    r1, c1 = grid.xy_to_grid(start_xy - perp * dist * np.tan(np.radians(19.47)))
+    r0, c0 = grid.xy_to_grid(start_xy + perp * dist *
+                             np.tan(np.radians(19.47)))
+    r1, c1 = grid.xy_to_grid(start_xy - perp * dist *
+                             np.tan(np.radians(19.47)))
     plt.plot([c0, c, c1], [r0, r, r1], c='g')
     r0, c0 = grid.xy_to_grid(start_xy + perp * dist * np.tan(np.radians(45.0)))
     r1, c1 = grid.xy_to_grid(start_xy - perp * dist * np.tan(np.radians(45.0)))
