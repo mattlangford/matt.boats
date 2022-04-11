@@ -8,9 +8,12 @@ class Grid(object):
         self.grid = np.zeros((dim, dim))
         self.resolution = resolution  # m/cell
 
+        self.vmax = 5.0
+        self.vmin = 5.0
+
     def show(self, disp=True):
         flat = self.grid.flatten()
-        plt.imshow(self.grid, vmin=-1.0, vmax=1.0, cmap='Blues')
+        plt.imshow(self.grid, vmin=self.vmin, vmax=self.vmax, cmap='Blues')
         if disp:
             plt.show()
 
@@ -62,12 +65,13 @@ class Grid(object):
 
 
 class Wavefront(object):
-    def __init__(self, start, t0, max_speed):
+    def __init__(self, start, t0, max_speed, direction):
         self.start = np.array(start)
+        self.direction = direction
         self.t0 = t0
 
         self.max_speed = max_speed
-        self.wave_speeds = np.linspace(0.0, self.max_speed, 10)[1:]
+        self.wave_speeds = np.linspace(0.0, self.max_speed, 20)[1:]
         self.wavelengths = np.array(
             [self.wave_speed_to_length(s) for s in self.wave_speeds])
 
@@ -78,7 +82,12 @@ class Wavefront(object):
         if dt0 <= 0.0:
             return total
 
-        dist = np.linalg.norm(xy - self.start, axis=1)
+        from_start = xy - self.start
+        dist = np.linalg.norm(from_start, axis=1)
+
+        dir_scale = (from_start.T / dist).T.dot(self.direction)
+        dir_scale = np.where(dir_scale > 0, np.ones_like(
+            dir_scale), np.zeros_like(dir_scale))
         for speed, length in zip(self.wave_speeds, self.wavelengths):
             x_wave = 0.5 * speed * dt0
             x_point = dist
@@ -92,8 +101,8 @@ class Wavefront(object):
             k2 = 0.1
             end_x = 0.1
             end = np.maximum(x - end_x, np.zeros_like(x))
-            scale = 0.9 * length / self.wavelengths[-1]
-            total += scale * np.exp(-k1 * end) * \
+            length_scale = 0.9 * length / self.wavelengths[-1]
+            total += dir_scale * length_scale * np.exp(-k1 * end) * \
                 np.exp(-k2 * dist) * np.sin(phase)
 
         return total
@@ -137,44 +146,53 @@ class Path(object):
         return np.array([-self.direction[1], self.direction[0]])
 
 
-grid = Grid(256, 0.1)
-start = grid.grid_to_xy([0, 0])
-end = grid.grid_to_xy([grid.dim - 1, grid.dim - 1])
-v = 1.0
+grid = Grid(256, 0.5)
+frac = grid.dim / 10
+start = grid.grid_to_xy([frac, frac])
+end = grid.grid_to_xy([9 * frac, 9 * frac])
+v = 3.0
 p = Path(start, end, v)
 xys = grid.coordinates_xy()
 
 ts = np.arange(0.0, 30.0, 0.5)
 fronts = []
-for t_now in ts[::2]:
-    xy = p.at(t_now)
-    fronts.append(Wavefront(xy, t_now, v))
+for t_now in ts[::3]:
+    xy = p.at(t_now + 1E-1)
+    fronts.append(Wavefront(xy, t_now, v, p.direction))
 
-for i, t_now in enumerate(ts):
+
+def render_fronts(grid, t):
     grid.clear()
-
     total = np.zeros_like(grid.grid)
     for front in fronts:
         total += front.at(t_now, xys).reshape(grid.grid.shape)
-
     grid.set_xy(xys, total.flatten())
+    return grid
+
+
+end_grid = render_fronts(grid, ts[-1])
+grid.vmin = np.min(end_grid.grid.flatten())
+grid.vmax = np.max(end_grid.grid.flatten())
+
+for i, t_now in enumerate(ts):
+    grid = render_fronts(grid, t_now)
     grid.show(False)
 
     xy = p.at(t_now)
     r, c = grid.xy_to_grid(xy)
     plt.scatter(c, r)
 
-    start_xy = p.at(t_now - 10)
-    perp = p.perp()
-    dist = np.linalg.norm(start_xy - xy)
-    r0, c0 = grid.xy_to_grid(start_xy + perp * dist *
-                             np.tan(np.radians(19.47)))
-    r1, c1 = grid.xy_to_grid(start_xy - perp * dist *
-                             np.tan(np.radians(19.47)))
-    plt.plot([c0, c, c1], [r0, r, r1], c='g')
-    r0, c0 = grid.xy_to_grid(start_xy + perp * dist * np.tan(np.radians(45.0)))
-    r1, c1 = grid.xy_to_grid(start_xy - perp * dist * np.tan(np.radians(45.0)))
-    plt.plot([c0, c, c1], [r0, r, r1], c='r')
+    #start_xy = p.at(t_now - 10)
+    #perp = p.perp()
+    #dist = np.linalg.norm(start_xy - xy)
+    # r0, c0 = grid.xy_to_grid(start_xy + perp * dist *
+    #                         np.tan(np.radians(19.47)))
+    # r1, c1 = grid.xy_to_grid(start_xy - perp * dist *
+    #                         np.tan(np.radians(19.47)))
+    #plt.plot([c0, c, c1], [r0, r, r1], c='g')
+    #r0, c0 = grid.xy_to_grid(start_xy + perp * dist * np.tan(np.radians(45.0)))
+    #r1, c1 = grid.xy_to_grid(start_xy - perp * dist * np.tan(np.radians(45.0)))
+    #plt.plot([c0, c, c1], [r0, r, r1], c='r')
 
     print(f"Saving frame {i} at {t_now:.3f}s")
     plt.savefig(f'/tmp/wake/{i:03d}.png')
