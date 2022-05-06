@@ -1,7 +1,10 @@
+use gloo::timers::callback::Interval;
+use nalgebra as na;
 use wasm_bindgen::JsCast;
 use yew::prelude::*;
 
 use rand::seq::SliceRandom;
+use rand::Rng;
 use rand::SeedableRng;
 
 // Dish out to gloo::console since it doesn't format the inputs.
@@ -97,27 +100,87 @@ fn load_background_image_url() -> String {
     urls.swap_remove(index)
 }
 
-enum Msg {}
+enum Msg {
+    Update(f64),
+}
 
 struct Model {
     url: String,
+
+    left_top: na::Vector2<f64>,
+    velocity: na::Vector2<f64>,
+
+    _update_handle: Interval,
 }
 
 impl Component for Model {
     type Message = Msg;
     type Properties = ();
 
-    fn create(_ctx: &Context<Self>) -> Self {
+    fn create(ctx: &Context<Self>) -> Self {
+        let s = 500.0;
         Self {
             url: load_background_image_url(),
+            left_top: na::vector![100.0, 100.0],
+            velocity: na::vector![
+                rand::thread_rng().gen_range(-s..s),
+                rand::thread_rng().gen_range(-s..s)
+            ],
+            _update_handle: {
+                let link = ctx.link().clone();
+                let fps = 30;
+                Interval::new(1000 / fps, move || {
+                    link.send_message(Msg::Update(1.0 / fps as f64))
+                })
+            },
+        }
+    }
+
+    fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
+        match msg {
+            Msg::Update(dt) => {
+                let window = web_sys::window().unwrap();
+                let document = window.document().unwrap();
+                let w_height = window
+                    .inner_height()
+                    .ok()
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(10.0);
+                let w_width = window
+                    .inner_width()
+                    .ok()
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(20.0);
+                let image = document
+                    .get_element_by_id("image")
+                    .expect("Unable to find image.");
+                let i_height = image.client_height() as f64;
+                let i_width = image.client_width() as f64;
+
+                self.left_top += dt * self.velocity;
+                let max_height = w_height - i_height;
+                let max_width = w_width - i_width;
+                if self.left_top[0] < 0.0 || self.left_top[0] >= max_width {
+                    self.velocity[0] *= -rand::thread_rng().gen_range(0.9..1.1);
+                    self.left_top[0] = self.left_top[0].min(max_width).max(0.0)
+                }
+                if self.left_top[1] < 0.0 || self.left_top[1] > max_height {
+                    self.velocity[1] *= -rand::thread_rng().gen_range(0.9..1.1);
+                    self.left_top[1] = self.left_top[1].min(max_height).max(0.0)
+                }
+                true
+            }
         }
     }
 
     fn view(&self, _ctx: &Context<Self>) -> Html {
+        let style_string = format!("left:{}px;top:{}px;", self.left_top[0], self.left_top[1]);
         html! {
-            <div class="container">
-                <img src={String::clone(&self.url)}/>
-            </div>
+            <>
+                <div id="container" style={style_string}>
+                    <img id="image" src={String::clone(&self.url)}/>
+                </div>
+            </>
         }
     }
 }
