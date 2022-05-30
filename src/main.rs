@@ -54,7 +54,7 @@ impl Ball {
             center: 0.5 * get_window_size().unwrap() + velocity,
             velocity: velocity,
             mass: mass,
-            radius: 1.5 * mass,
+            radius: 3.0 * mass,
         }
     }
 
@@ -300,7 +300,7 @@ impl Component for Model {
             <>
                 <div id="container"
                     style={style_string}
-                    onclick={ctx.link().callback(|_| Msg::Add)}
+                    //onclick={ctx.link().callback(|_| Msg::Add)}
                     ontouchstart={ctx.link().callback(|_| Msg::Add)}
                 >
                     <svg width="100%" height="100%">
