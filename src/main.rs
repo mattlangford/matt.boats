@@ -25,10 +25,6 @@ fn get_window_size() -> Option<na::Vector2<f64>> {
     }
 }
 
-enum Msg {
-    Update(f64),
-}
-
 struct Ball {
     center: na::Vector2<f64>,
     velocity: na::Vector2<f64>,
@@ -83,7 +79,9 @@ struct Collision {
 }
 
 trait Colliable {
-    fn is_collided(&self, center: &na::Vector2<f64>, radius: f64) -> bool;
+    fn is_collided(&self, center: &na::Vector2<f64>, radius: f64) -> bool {
+        self.get_collision(center, radius).is_some()
+    }
     fn get_collision(&self, center: &na::Vector2<f64>, radius: f64) -> Option<Collision>;
 }
 
@@ -153,27 +151,29 @@ impl Colliable for Line {
 
 #[derive(Default, Debug)]
 struct Rect {
-    top: Line,
-    left: Line,
-    right: Line,
-    bottom: Line,
+    edges: [Line; 4],
 }
 
 impl Rect {
     fn from_diag(tl: &na::Vector2<f64>, br: &na::Vector2<f64>) -> Rect {
         Rect {
-            top: Line::new(tl[0], tl[1], br[0], tl[1]),
-            left: Line::new(tl[0], tl[1], tl[0], br[1]),
-            right: Line::new(br[0], br[1], br[0], tl[1]),
-            bottom: Line::new(tl[0], br[1], br[0], br[1]),
+            edges: [
+                Line::new(tl[0], tl[1], br[0], tl[1]), // top
+                Line::new(tl[0], tl[1], tl[0], br[1]), // left
+                Line::new(br[0], br[1], br[0], tl[1]), // right
+                Line::new(tl[0], br[1], br[0], br[1]),
+            ], // bottom
         }
     }
 
-    fn get_collision(&self, center: &na::Vector2<f64>, radius: f64) -> Vec<Collision> {
-        [&self.top, &self.left, &self.right, &self.bottom]
+    fn get_collisions(
+        &self,
+        center: na::Vector2<f64>,
+        radius: f64,
+    ) -> impl Iterator<Item = Collision> + '_ {
+        self.edges
             .iter()
-            .filter_map(|l| l.get_collision(center, radius))
-            .collect()
+            .filter_map(move |l| l.get_collision(&center, radius))
     }
 }
 
@@ -204,16 +204,19 @@ struct Model {
     _update_handle: Interval,
 }
 
+enum Msg {
+    Update(f64),
+    Add,
+}
+
 impl Component for Model {
     type Message = Msg;
     type Properties = ();
 
     fn create(ctx: &Context<Self>) -> Self {
         let mut balls: Vec<Ball> = Vec::new();
-        balls.push(Ball::from(100.0, 100.0, 0.0, 0.0));
-        balls.push(Ball::from(200.0, 100.0, -30.0, 0.0));
-        balls.push(Ball::new());
-        balls.push(Ball::new());
+        balls.push(Ball::from(100.0, 100.0, 75.0, 1.0));
+        balls.push(Ball::from(200.0, 158.0, -75.0, 0.0));
 
         Self {
             balls: balls,
@@ -229,12 +232,16 @@ impl Component for Model {
 
     fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
+            Msg::Add => {
+                self.balls.push(Ball::new());
+                true
+            }
             Msg::Update(dt) => {
                 let bounds = Rect::from_diag(&na::vector![0.0, 0.0], &get_window_size().unwrap());
                 for ball in self.balls.iter_mut() {
                     ball.center += ball.velocity * dt;
                     for Collision { point, normal } in
-                        bounds.get_collision(&ball.center, ball.radius)
+                        bounds.get_collisions(ball.center.clone(), ball.radius)
                     {
                         let along_normal = ball.velocity.dot(&normal);
                         ball.velocity -= normal * along_normal * 2.0;
@@ -251,33 +258,30 @@ impl Component for Model {
                         if let Some(Collision { point, normal }) =
                             self.balls[i].get_collision(&self.balls[j].center, self.balls[j].radius)
                         {
-                            log!("Collided at {:?}", point);
-                            self.balls[i].center = point - self.balls[i].radius * normal;
-                            self.balls[j].center = point + self.balls[j].radius * normal;
-
-                            let i_along_normal = self.balls[i].velocity.dot(&normal);
-                            let j_along_normal = self.balls[j].velocity.dot(&normal);
+                            let disp = (self.balls[i].center - self.balls[j].center).norm();
+                            let needed = self.balls[i].radius + self.balls[j].radius;
+                            self.balls[i].center -= normal * 0.5 * (needed - disp);
+                            self.balls[j].center += normal * 0.5 * (needed - disp);
 
                             let i_mass = self.balls[i].mass;
                             let j_mass = self.balls[j].mass;
                             let total_mass = i_mass + j_mass;
 
-                            let i_diff = self.balls[i].center - self.balls[j].center;
-                            let j_diff = self.balls[j].center - self.balls[i].center;
-                            let i_v_diff = self.balls[i].velocity - self.balls[j].velocity;
-                            let j_v_diff = self.balls[j].velocity - self.balls[i].velocity;
+                            let tangent = na::vector![-normal[1], normal[0]];
+                            let vi_normal = self.balls[i].velocity.dot(&normal);
+                            let vj_normal = self.balls[j].velocity.dot(&normal);
+                            let vi_tangent = self.balls[i].velocity.dot(&tangent);
+                            let vj_tangent = self.balls[j].velocity.dot(&tangent);
 
-                            self.balls[i].velocity -= 2.0
-                                * (j_mass / total_mass)
-                                * (i_v_diff.dot(&i_diff) / i_diff.norm().powi(2))
-                                * i_diff;
-                            self.balls[j].velocity -= 2.0
-                                * (j_mass / total_mass)
-                                * (j_v_diff.dot(&j_diff) / j_diff.norm().powi(2))
-                                * j_diff;
+                            let new_vi_normal = (vi_normal * (i_mass - j_mass)
+                                + 2.0 * j_mass * vj_normal)
+                                / total_mass;
+                            let new_vj_normal = (vj_normal * (j_mass - i_mass)
+                                + 2.0 * i_mass * vi_normal)
+                                / total_mass;
 
-                            //self.balls[i].velocity -= normal * i_along_normal * 2.0;
-                            //self.balls[j].velocity -= normal * j_along_normal * 2.0;
+                            self.balls[i].velocity = new_vi_normal * normal + vi_tangent * tangent;
+                            self.balls[j].velocity = new_vj_normal * normal + vj_tangent * tangent;
                         }
                     }
                 }
@@ -287,7 +291,7 @@ impl Component for Model {
         }
     }
 
-    fn view(&self, _ctx: &Context<Self>) -> Html {
+    fn view(&self, ctx: &Context<Self>) -> Html {
         let window_size = get_window_size().expect("Unable to get window size.");
         let style_string = format!(
             "width:{}px;height:{}px;background:grey",
@@ -296,7 +300,7 @@ impl Component for Model {
 
         html! {
             <>
-                <div id="container" style={style_string}>
+                <div id="container" style={style_string} onclick={ctx.link().callback(|_| Msg::Add)}>
                     <svg width="100%" height="100%">
                         { for self.balls.iter().map(Ball::render) }
                     </svg>
