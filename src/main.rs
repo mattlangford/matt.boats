@@ -164,8 +164,8 @@ impl Rect {
                 Line::new(tl[0], tl[1], br[0], tl[1]), // top
                 Line::new(tl[0], tl[1], tl[0], br[1]), // left
                 Line::new(br[0], br[1], br[0], tl[1]), // right
-                Line::new(tl[0], br[1], br[0], br[1]),
-            ], // bottom
+                Line::new(tl[0], br[1], br[0], br[1]), // bottom
+            ],
         }
     }
 
@@ -181,11 +181,6 @@ impl Rect {
 }
 
 impl Colliable for Ball {
-    fn is_collided(&self, center: &na::Vector2<f64>, radius: f64) -> bool {
-        let dist = (self.center - center).norm();
-        dist < (radius + self.radius)
-    }
-
     fn get_collision(&self, center: &na::Vector2<f64>, radius: f64) -> Option<Collision> {
         let diff = center - self.center;
         let distance = diff.norm().max(1E-3);
@@ -303,7 +298,11 @@ impl Component for Model {
 
         html! {
             <>
-                <div id="container" style={style_string} onclick={ctx.link().callback(|_| Msg::Add)}>
+                <div id="container"
+                    style={style_string}
+                    onclick={ctx.link().callback(|_| Msg::Add)}
+                    ontouchstart={ctx.link().callback(|_| Msg::Add)}
+                >
                     <svg width="100%" height="100%">
                         { for self.balls.iter().map(Ball::render) }
                     </svg>
