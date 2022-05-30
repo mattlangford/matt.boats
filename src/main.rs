@@ -43,15 +43,18 @@ impl Ball {
     }
     fn new() -> Self {
         let s = 300.0;
+        let m = 20.0;
         let velocity = na::vector![
             rand::thread_rng().gen_range(-s..s),
             rand::thread_rng().gen_range(-s..s)
         ];
+
+        let mass = rand::thread_rng().gen_range(0.5..1.0) * m;
         Self {
             center: 0.5 * get_window_size().unwrap() + velocity,
             velocity: velocity,
-            mass: 1.0,
-            radius: 30.0,
+            mass: mass,
+            radius: 1.5 * mass,
         }
     }
 
@@ -215,8 +218,8 @@ impl Component for Model {
 
     fn create(ctx: &Context<Self>) -> Self {
         let mut balls: Vec<Ball> = Vec::new();
-        balls.push(Ball::from(100.0, 100.0, 75.0, 1.0));
-        balls.push(Ball::from(200.0, 158.0, -75.0, 0.0));
+        balls.push(Ball::new());
+        balls.push(Ball::new());
 
         Self {
             balls: balls,
