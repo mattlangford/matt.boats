@@ -14,6 +14,8 @@ macro_rules! log {
     );
 }
 
+const HEIGHT: f64 = 1.0;
+
 fn get_window_size() -> Option<na::Vector2<f64>> {
     let window = web_sys::window().unwrap();
     let w_height = window.inner_height().ok().and_then(|v| v.as_f64());
@@ -25,6 +27,11 @@ fn get_window_size() -> Option<na::Vector2<f64>> {
     }
 }
 
+fn get_viewbox_size() -> Option<na::Vector2<f64>> {
+    get_window_size().map(|s| na::vector![HEIGHT * s[0] / s[1], HEIGHT])
+}
+
+#[derive(Debug, Clone)]
 struct Ball {
     center: na::Vector2<f64>,
     velocity: na::Vector2<f64>,
@@ -33,17 +40,21 @@ struct Ball {
 }
 
 impl Ball {
-    fn from(c_x: f64, c_y: f64, v_x: f64, v_y: f64) -> Self {
+    fn radius_from_mass(mass: f64) -> f64 {
+        1E-4 * mass
+    }
+
+    fn from(c_x: f64, c_y: f64, v_x: f64, v_y: f64, m: f64) -> Self {
         Self {
             center: na::vector![c_x, c_y],
             velocity: na::vector![v_x, v_y],
-            mass: 1.0,
-            radius: 30.0,
+            mass: m,
+            radius: Ball::radius_from_mass(m),
         }
     }
     fn new() -> Self {
-        let s = 300.0;
-        let m = 20.0;
+        let s = 3.0;
+        let m = 1000.0;
         let velocity = na::vector![
             rand::thread_rng().gen_range(-s..s),
             rand::thread_rng().gen_range(-s..s)
@@ -51,10 +62,10 @@ impl Ball {
 
         let mass = rand::thread_rng().gen_range(0.5..1.0) * m;
         Self {
-            center: 0.5 * get_window_size().unwrap() + velocity,
+            center: na::vector![HEIGHT, HEIGHT] * 0.5,
             velocity: velocity,
             mass: mass,
-            radius: 3.0 * mass,
+            radius: Ball::radius_from_mass(m),
         }
     }
 
@@ -65,11 +76,8 @@ impl Ball {
                 cy={format!("{:.3}", self.center[1])}
                 r={format!("{:.3}", self.radius)}
                 fill="none"
-                stroke={ format!("rgb({}, {}, {})",
-                               255.0 * self.mass,
-                               255.0 * self.mass,
-                               255.0 * self.mass) }
-                stroke-width="1.0"
+                stroke="white"
+                stroke-width={format!("{}", 0.1 * self.radius)}
             />
         }
     }
@@ -155,6 +163,7 @@ impl Colliable for Line {
 #[derive(Default, Debug)]
 struct Rect {
     edges: [Line; 4],
+    normals: [na::Vector2<f64>; 4],
 }
 
 impl Rect {
@@ -166,6 +175,12 @@ impl Rect {
                 Line::new(br[0], br[1], br[0], tl[1]), // right
                 Line::new(tl[0], br[1], br[0], br[1]), // bottom
             ],
+            normals: [
+                na::vector![0.0, 1.0],
+                na::vector![1.0, 0.0],
+                na::vector![-1.0, 0.0],
+                na::vector![0.0, -1.0],
+            ],
         }
     }
 
@@ -176,7 +191,17 @@ impl Rect {
     ) -> impl Iterator<Item = Collision> + '_ {
         self.edges
             .iter()
-            .filter_map(move |l| l.get_collision(&center, radius))
+            .zip(self.normals)
+            .filter_map(move |(l, n)| {
+                if let Some(c) = l.get_collision(&center, radius) {
+                    Some(Collision {
+                        point: c.point,
+                        normal: n,
+                    })
+                } else {
+                    None
+                }
+            })
     }
 }
 
@@ -214,7 +239,6 @@ impl Component for Model {
     fn create(ctx: &Context<Self>) -> Self {
         let mut balls: Vec<Ball> = Vec::new();
         balls.push(Ball::new());
-        balls.push(Ball::new());
 
         Self {
             balls: balls,
@@ -232,19 +256,36 @@ impl Component for Model {
         match msg {
             Msg::Add => {
                 self.balls.push(Ball::new());
+
                 true
             }
             Msg::Update(dt) => {
-                let bounds = Rect::from_diag(&na::vector![0.0, 0.0], &get_window_size().unwrap());
+                let bounds = Rect::from_diag(&na::vector![0.0, 0.0], &get_viewbox_size().unwrap());
                 for ball in self.balls.iter_mut() {
-                    ball.center += ball.velocity * dt;
+                    const G: f64 = 0.2 * 9.8;
+                    let accel = na::vector![0.0, G];
+
+                    ball.center += ball.velocity * dt + 0.5 * accel * dt * dt;
+
                     for Collision { point, normal } in
                         bounds.get_collisions(ball.center.clone(), ball.radius)
                     {
                         let along_normal = ball.velocity.dot(&normal);
                         ball.velocity -= normal * along_normal * 2.0;
                         ball.center = point + normal * ball.radius;
+
+                        log!("Collision! v:{}", ball.velocity);
+
+                        ball.velocity *= 0.999;
                     }
+
+                    ball.velocity += accel * dt;
+
+                    //if ball.velocity.norm() * dt > ball.radius {
+                    //    ball.velocity = ball.velocity.normalize() * 0.9 * dt * ball.radius;
+                    //}
+
+                    //ball.velocity = ball.velocity.map(|b| if b.abs() < 1.0 { 0.0 } else { b });
                 }
 
                 for i in 0..self.balls.len() {
@@ -296,14 +337,16 @@ impl Component for Model {
             window_size[0], window_size[1]
         );
 
+        let viewbox_size = get_viewbox_size().expect("Unable to get viewBox size.");
+        let viewbox_string = format!("0 0 {} {}", viewbox_size[0], viewbox_size[1]);
+
         html! {
             <>
                 <div id="container"
                     style={style_string}
-                    //onclick={ctx.link().callback(|_| Msg::Add)}
-                    ontouchstart={ctx.link().callback(|_| Msg::Add)}
+                    onclick={ctx.link().callback(|_| Msg::Add)}
                 >
-                    <svg width="100%" height="100%">
+                    <svg width="100%" height="100%" viewBox={viewbox_string}>
                         { for self.balls.iter().map(Ball::render) }
                     </svg>
                 </div>
