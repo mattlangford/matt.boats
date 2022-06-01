@@ -14,7 +14,7 @@ macro_rules! log {
     );
 }
 
-const HEIGHT: f64 = 1.0;
+const HEIGHT: f64 = 5.0;
 
 fn get_window_size() -> Option<na::Vector2<f64>> {
     let window = web_sys::window().unwrap();
@@ -41,7 +41,7 @@ struct Ball {
 
 impl Ball {
     fn radius_from_mass(mass: f64) -> f64 {
-        1E-4 * mass
+        5E-4 * mass
     }
 
     fn from(c_x: f64, c_y: f64, v_x: f64, v_y: f64, m: f64) -> Self {
@@ -244,7 +244,7 @@ impl Component for Model {
             balls: balls,
             _update_handle: {
                 let link = ctx.link().clone();
-                let fps = 17;
+                let fps = 24;
                 Interval::new(1000 / fps, move || {
                     link.send_message(Msg::Update(1.0 / fps as f64))
                 })
@@ -289,6 +289,14 @@ impl Component for Model {
                 for i in 0..self.balls.len() {
                     for j in 0..self.balls.len() {
                         if i == j {
+                            continue;
+                        }
+
+                        if (self.balls[i].velocity - self.balls[j].velocity)
+                            .dot(&(self.balls[i].center - self.balls[j].center).normalize())
+                            .abs()
+                            < 0.1
+                        {
                             continue;
                         }
 
