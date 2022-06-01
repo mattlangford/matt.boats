@@ -274,8 +274,6 @@ impl Component for Model {
                         ball.velocity -= normal * along_normal * 2.0;
                         ball.center = point + normal * ball.radius;
 
-                        log!("Collision! v:{}", ball.velocity);
-
                         ball.velocity *= 0.999;
                     }
 

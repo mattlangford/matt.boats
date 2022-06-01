@@ -9,7 +9,7 @@ fi
 
 git checkout deploy
 git reset --hard $BRANCH_NAME
-trunk build
+trunk build --release
 cp dist/* .
 git add .
 git commit --amend --no-edit
