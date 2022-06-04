@@ -16,6 +16,10 @@ macro_rules! log {
 
 const HEIGHT: f64 = 5.0;
 
+fn f(v: f64) -> String {
+    format!("{:.5}", v)
+}
+
 fn get_window_size() -> Option<na::Vector2<f64>> {
     let window = web_sys::window().unwrap();
     let w_height = window.inner_height().ok().and_then(|v| v.as_f64());
@@ -70,15 +74,36 @@ impl Ball {
     }
 
     fn render(&self) -> Html {
+        let bounds = Rect::from_diag(&na::vector![0.0, 0.0], &get_viewbox_size().unwrap());
+        let point = bounds.get_closest_point(&self.center);
         html! {
+        <>
+            <line
+                x1={f(self.center[0])}
+                y1={f(self.center[1])}
+                x2={f(point[0])}
+                y2={f(point[1])}
+                stroke="red"
+                stroke-width={f(0.01 * self.radius)}
+            />
+            <line
+                x1={f(self.center[0])}
+                y1={f(self.center[1])}
+                x2={f(self.center[0] + 0.5 * self.velocity[0])}
+                y2={f(self.center[1] + 0.5 * self.velocity[1])}
+                stroke="white"
+                stroke-width={f(0.075 * self.radius)}
+            />
+
             <circle
-                cx={format!("{:.3}", self.center[0])}
-                cy={format!("{:.3}", self.center[1])}
-                r={format!("{:.3}", self.radius)}
+                cx={f(self.center[0])}
+                cy={f(self.center[1])}
+                r={f(self.radius)}
                 fill="none"
                 stroke="white"
-                stroke-width={format!("{}", 0.1 * self.radius)}
+                stroke-width={f(0.1 * self.radius)}
             />
+        </>
         }
     }
 }
@@ -171,15 +196,15 @@ impl Rect {
         Rect {
             edges: [
                 Line::new(tl[0], tl[1], br[0], tl[1]), // top
+                Line::new(tl[0], br[1], br[0], br[1]), // bottom
                 Line::new(tl[0], tl[1], tl[0], br[1]), // left
                 Line::new(br[0], br[1], br[0], tl[1]), // right
-                Line::new(tl[0], br[1], br[0], br[1]), // bottom
             ],
             normals: [
                 na::vector![0.0, 1.0],
+                na::vector![0.0, -1.0],
                 na::vector![1.0, 0.0],
                 na::vector![-1.0, 0.0],
-                na::vector![0.0, -1.0],
             ],
         }
     }
@@ -203,6 +228,19 @@ impl Rect {
                 }
             })
     }
+
+    fn get_closest_point(&self, point: &na::Vector2<f64>) -> na::Vector2<f64> {
+        let (l, n) = self
+            .edges
+            .iter()
+            .zip(self.normals)
+            .min_by_key(move |(l, n)| {
+                // Can't min_by_key for floats!
+                (100.0 * (point - l.start).dot(n).abs()) as u64
+            })
+            .unwrap();
+        point - (point - l.start).dot(&n) * n
+    }
 }
 
 impl Colliable for Ball {
@@ -223,6 +261,9 @@ impl Colliable for Ball {
 }
 
 struct Model {
+    t: f64,
+    accel_flip_time: Option<f64>,
+
     balls: Vec<Ball>,
     _update_handle: Interval,
 }
@@ -230,6 +271,40 @@ struct Model {
 enum Msg {
     Update(f64),
     Add,
+    Split(usize),
+}
+
+impl Model {
+    fn accel_sign(&mut self) -> f64 {
+        if let Some(flip_time) = self.accel_flip_time {
+            if flip_time > self.t {
+                return -1.0;
+            }
+
+            self.accel_flip_time = None;
+        }
+
+        let min_speed = self.balls.len() as f64 * 0.1;
+        if self.balls.iter().map(|b| b.velocity.norm()).sum::<f64>() < min_speed {
+            self.accel_flip_time = Some(self.t + 1.0);
+            return -1.0;
+        }
+        return 1.0;
+    }
+
+    fn split_at_index(&mut self, index: usize) {
+        let mut new_ball = self.balls[index].clone();
+        new_ball.mass *= 0.5;
+        self.balls[index].mass *= 0.5;
+
+        new_ball.radius *= 0.5;
+        self.balls[index].radius *= 0.5;
+
+        let quarter_pi = std::f64::consts::PI / 4.0;
+        new_ball.velocity = na::Rotation2::new(quarter_pi) * new_ball.velocity;
+        self.balls[index].velocity = na::Rotation2::new(-quarter_pi) * new_ball.velocity;
+        self.balls.push(new_ball);
+    }
 }
 
 impl Component for Model {
@@ -241,10 +316,12 @@ impl Component for Model {
         balls.push(Ball::new());
 
         Self {
+            t: 0.0,
+            accel_flip_time: None,
             balls: balls,
             _update_handle: {
                 let link = ctx.link().clone();
-                let fps = 24;
+                let fps = 17;
                 Interval::new(1000 / fps, move || {
                     link.send_message(Msg::Update(1.0 / fps as f64))
                 })
@@ -256,14 +333,22 @@ impl Component for Model {
         match msg {
             Msg::Add => {
                 self.balls.push(Ball::new());
-
                 true
             }
+            Msg::Split(i) => {
+                self.split_at_index(i);
+                false
+            }
             Msg::Update(dt) => {
+                self.t += dt;
                 let bounds = Rect::from_diag(&na::vector![0.0, 0.0], &get_viewbox_size().unwrap());
+                let accel_sign = self.accel_sign();
                 for ball in self.balls.iter_mut() {
-                    const G: f64 = 0.2 * 9.8;
-                    let accel = na::vector![0.0, G];
+                    const G: f64 = -0.2 * 9.8;
+                    //let accel = na::vector![0.0, G];
+                    let accel = accel_sign
+                        * (ball.center - bounds.get_closest_point(&ball.center)).normalize()
+                        * G;
 
                     ball.center += ball.velocity * dt + 0.5 * accel * dt * dt;
 
@@ -274,7 +359,7 @@ impl Component for Model {
                         ball.velocity -= normal * along_normal * 2.0;
                         ball.center = point + normal * ball.radius;
 
-                        ball.velocity *= 0.999;
+                        ball.velocity *= 0.9;
                     }
 
                     ball.velocity += accel * dt;
@@ -338,19 +423,48 @@ impl Component for Model {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let window_size = get_window_size().expect("Unable to get window size.");
+
+        let mut background_color = "grey";
+        if let Some(flip_time) = self.accel_flip_time {
+            background_color = "dimgrey";
+        }
+
         let style_string = format!(
-            "width:{}px;height:{}px;background:grey",
-            window_size[0], window_size[1]
+            "width:{}px;height:{}px;background:{}",
+            window_size[0], window_size[1], background_color
         );
 
         let viewbox_size = get_viewbox_size().expect("Unable to get viewBox size.");
         let viewbox_string = format!("0 0 {} {}", viewbox_size[0], viewbox_size[1]);
 
+        let balls = self
+            .balls
+            .iter()
+            .map(|b| (b.center, b.radius))
+            .collect::<Vec<(na::Vector2<f64>, f64)>>();
+        let on_click = ctx.link().callback(move |e: MouseEvent| -> Msg {
+            let window_size = get_window_size().expect("Unable to get window size.");
+            let viewbox_size = get_viewbox_size().expect("Unable to get viewbox size.");
+            let x = viewbox_size[0] * e.x() as f64 / window_size[0];
+            let y = viewbox_size[1] * e.y() as f64 / window_size[1];
+            let pos = na::vector![x, y];
+            log!("Pos: {}", pos);
+            if let Some((i, _)) = balls
+                .iter()
+                .enumerate()
+                .filter(|(_, (c, r))| (c - pos).norm() < *r)
+                .next()
+            {
+                return Msg::Split(i);
+            }
+            Msg::Add
+        });
+
         html! {
             <>
                 <div id="container"
                     style={style_string}
-                    onclick={ctx.link().callback(|_| Msg::Add)}
+                    onclick={on_click}
                 >
                     <svg width="100%" height="100%" viewBox={viewbox_string}>
                         { for self.balls.iter().map(Ball::render) }
