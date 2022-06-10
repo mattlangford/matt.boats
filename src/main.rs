@@ -114,7 +114,8 @@ impl Ball {
                 x={f(image[0])}
                 y={f(image[1])}
                 fill="white"
-                transform={transform}/>
+                transform={transform}
+                preserveAspectRatio="none"/>
         </>
         }
     }
