@@ -16,6 +16,34 @@ macro_rules! log {
 
 const HEIGHT: f64 = 5.0;
 
+struct ImageData {
+    url: String,
+    center: na::Vector2<u64>,
+    radius: u64,
+}
+
+fn load_image_urls() -> Vec<String> {
+    [
+        "https://imgur.com/se9hSxe.jpeg",
+        "https://imgur.com/Tvh8kPD.jpeg",
+        "https://imgur.com/LCUkOWx.jpeg",
+        "https://imgur.com/3JrrUbO.jpeg",
+        "https://imgur.com/oNTzoBn.jpeg",
+        "https://imgur.com/uLaowT7.jpeg",
+        "https://imgur.com/YfHyEje.jpeg",
+        "https://imgur.com/ZqNZ01Q.jpeg",
+        "https://imgur.com/LIsTr9Z.jpeg",
+        "https://imgur.com/3TG5xmA.jpeg",
+        "https://imgur.com/8zPRRdY.jpeg",
+        "https://imgur.com/OoZkItp.jpeg",
+        "https://imgur.com/ZarQdl4.jpeg",
+        "https://imgur.com/HLFHAep.jpeg",
+    ]
+    .iter()
+    .map(|&s| String::from(s))
+    .collect()
+}
+
 fn f(v: f64) -> String {
     format!("{:.5}", v)
 }
@@ -41,6 +69,8 @@ struct Ball {
     velocity: na::Vector2<f64>,
     mass: f64,
     radius: f64,
+    angular_velocity: f64,
+    rotation: f64,
 }
 
 impl Ball {
@@ -54,6 +84,8 @@ impl Ball {
             velocity: na::vector![v_x, v_y],
             mass: m,
             radius: Ball::radius_from_mass(m),
+            angular_velocity: 0.0,
+            rotation: 0.0,
         }
     }
     fn new() -> Self {
@@ -70,39 +102,47 @@ impl Ball {
             velocity: velocity,
             mass: mass,
             radius: Ball::radius_from_mass(m),
+            angular_velocity: 0.0,
+            rotation: rand::thread_rng().gen_range(-s..s),
         }
     }
 
     fn render(&self) -> Html {
         let bounds = Rect::from_diag(&na::vector![0.0, 0.0], &get_viewbox_size().unwrap());
         let point = bounds.get_closest_point(&self.center);
+
+        let image = self.center - na::vector!(self.radius, self.radius);
+        let rotation_deg = 180.0 * self.rotation / std::f64::consts::PI;
+        let transform = format!(
+            "rotate({} {} {})",
+            rotation_deg, self.center[0], self.center[1]
+        );
         html! {
         <>
-            <line
-                x1={f(self.center[0])}
-                y1={f(self.center[1])}
-                x2={f(point[0])}
-                y2={f(point[1])}
-                stroke="red"
-                stroke-width={f(0.01 * self.radius)}
-            />
-            <line
-                x1={f(self.center[0])}
-                y1={f(self.center[1])}
-                x2={f(self.center[0] + 0.5 * self.velocity[0])}
-                y2={f(self.center[1] + 0.5 * self.velocity[1])}
-                stroke="white"
-                stroke-width={f(0.075 * self.radius)}
-            />
+            // <line
+            //     x1={f(self.center[0])}
+            //     y1={f(self.center[1])}
+            //     x2={f(point[0])}
+            //     y2={f(point[1])}
+            //     stroke="red"
+            //     stroke-width={f(0.01 * self.radius)}
+            // />
+            // <line
+            //     x1={f(self.center[0])}
+            //     y1={f(self.center[1])}
+            //     x2={f(self.center[0] + 0.5 * self.velocity[0])}
+            //     y2={f(self.center[1] + 0.5 * self.velocity[1])}
+            //     stroke="white"
+            //     stroke-width={f(0.075 * self.radius)}
+            // />
 
-            <circle
-                cx={f(self.center[0])}
-                cy={f(self.center[1])}
-                r={f(self.radius)}
-                fill="none"
-                stroke="white"
-                stroke-width={f(0.1 * self.radius)}
-            />
+            <image href="https://svgsilh.com/svg/304361-ffffff.svg"
+                width={f(2.0 * self.radius)}
+                height={f(2.0 * self.radius)}
+                x={f(image[0])}
+                y={f(image[1])}
+                fill="white"
+                transform={transform}/>
         </>
         }
     }
@@ -321,7 +361,7 @@ impl Component for Model {
             balls: balls,
             _update_handle: {
                 let link = ctx.link().clone();
-                let fps = 17;
+                let fps = 15;
                 Interval::new(1000 / fps, move || {
                     link.send_message(Msg::Update(1.0 / fps as f64))
                 })
@@ -332,6 +372,9 @@ impl Component for Model {
     fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
             Msg::Add => {
+                if self.balls.len() > 10 {
+                    return false;
+                }
                 self.balls.push(Ball::new());
                 true
             }
@@ -345,10 +388,9 @@ impl Component for Model {
                 let accel_sign = self.accel_sign();
                 for ball in self.balls.iter_mut() {
                     const G: f64 = -0.2 * 9.8;
-                    //let accel = na::vector![0.0, G];
-                    let accel = accel_sign
-                        * (ball.center - bounds.get_closest_point(&ball.center)).normalize()
-                        * G;
+
+                    let to_closest_point = ball.center - bounds.get_closest_point(&ball.center);
+                    let accel = accel_sign * (to_closest_point).normalize() * G;
 
                     ball.center += ball.velocity * dt + 0.5 * accel * dt * dt;
 
@@ -360,9 +402,15 @@ impl Component for Model {
                         ball.center = point + normal * ball.radius;
 
                         ball.velocity *= 0.9;
+                        ball.angular_velocity *= 0.7;
                     }
 
                     ball.velocity += accel * dt;
+                    ball.rotation += ball.angular_velocity * dt;
+
+                    let error = to_closest_point
+                        .dot(&na::vector![ball.rotation.cos(), ball.rotation.sin()]);
+                    ball.angular_velocity += 10.0 * error * dt;
 
                     //if ball.velocity.norm() * dt > ball.radius {
                     //    ball.velocity = ball.velocity.normalize() * 0.9 * dt * ball.radius;
@@ -412,6 +460,9 @@ impl Component for Model {
 
                             self.balls[i].velocity = new_vi_normal * normal + vi_tangent * tangent;
                             self.balls[j].velocity = new_vj_normal * normal + vj_tangent * tangent;
+
+                            self.balls[i].angular_velocity *= 0.7;
+                            self.balls[j].angular_velocity *= 0.7;
                         }
                     }
                 }
@@ -424,9 +475,9 @@ impl Component for Model {
     fn view(&self, ctx: &Context<Self>) -> Html {
         let window_size = get_window_size().expect("Unable to get window size.");
 
-        let mut background_color = "grey";
+        let mut background_color = "midnightblue";
         if let Some(flip_time) = self.accel_flip_time {
-            background_color = "dimgrey";
+            background_color = "darkblue";
         }
 
         let style_string = format!(
