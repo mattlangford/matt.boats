@@ -16,34 +16,6 @@ macro_rules! log {
 
 const HEIGHT: f64 = 5.0;
 
-struct ImageData {
-    url: String,
-    center: na::Vector2<u64>,
-    radius: u64,
-}
-
-fn load_image_urls() -> Vec<String> {
-    [
-        "https://imgur.com/se9hSxe.jpeg",
-        "https://imgur.com/Tvh8kPD.jpeg",
-        "https://imgur.com/LCUkOWx.jpeg",
-        "https://imgur.com/3JrrUbO.jpeg",
-        "https://imgur.com/oNTzoBn.jpeg",
-        "https://imgur.com/uLaowT7.jpeg",
-        "https://imgur.com/YfHyEje.jpeg",
-        "https://imgur.com/ZqNZ01Q.jpeg",
-        "https://imgur.com/LIsTr9Z.jpeg",
-        "https://imgur.com/3TG5xmA.jpeg",
-        "https://imgur.com/8zPRRdY.jpeg",
-        "https://imgur.com/OoZkItp.jpeg",
-        "https://imgur.com/ZarQdl4.jpeg",
-        "https://imgur.com/HLFHAep.jpeg",
-    ]
-    .iter()
-    .map(|&s| String::from(s))
-    .collect()
-}
-
 fn f(v: f64) -> String {
     format!("{:.5}", v)
 }
@@ -303,14 +275,16 @@ impl Colliable for Ball {
 struct Model {
     t: f64,
     accel_flip_time: Option<f64>,
-
     balls: Vec<Ball>,
+    touch_mode: bool,
+
     _update_handle: Interval,
 }
 
 enum Msg {
     Update(f64),
-    Add,
+    Add(bool),
+    Noop,
     Split(usize),
 }
 
@@ -359,6 +333,7 @@ impl Component for Model {
             t: 0.0,
             accel_flip_time: None,
             balls: balls,
+            touch_mode: false,
             _update_handle: {
                 let link = ctx.link().clone();
                 let fps = 15;
@@ -371,14 +346,22 @@ impl Component for Model {
 
     fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
-            Msg::Add => {
+            Msg::Noop => false,
+            Msg::Add(touch) => {
+                if self.touch_mode && !touch {
+                    return false;
+                }
                 if self.balls.len() > 10 {
                     return false;
                 }
+                self.touch_mode = touch;
                 self.balls.push(Ball::new());
                 true
             }
             Msg::Split(i) => {
+                if self.touch_mode {
+                    return false;
+                }
                 self.split_at_index(i);
                 false
             }
@@ -499,7 +482,6 @@ impl Component for Model {
             let x = viewbox_size[0] * e.x() as f64 / window_size[0];
             let y = viewbox_size[1] * e.y() as f64 / window_size[1];
             let pos = na::vector![x, y];
-            log!("Pos: {}", pos);
             if let Some((i, _)) = balls
                 .iter()
                 .enumerate()
@@ -508,7 +490,12 @@ impl Component for Model {
             {
                 return Msg::Split(i);
             }
-            Msg::Add
+            Msg::Add(false)
+        });
+        let on_touch_end = ctx.link().callback(move |e: TouchEvent| -> Msg {
+            let window_size = get_window_size().expect("Unable to get window size.");
+            let viewbox_size = get_viewbox_size().expect("Unable to get viewbox size.");
+            Msg::Add(true)
         });
 
         html! {
@@ -516,6 +503,7 @@ impl Component for Model {
                 <div id="container"
                     style={style_string}
                     onclick={on_click}
+                    ontouchend={on_touch_end}
                 >
                     <svg width="100%" height="100%" viewBox={viewbox_string}>
                         { for self.balls.iter().map(Ball::render) }
