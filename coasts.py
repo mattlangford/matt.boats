@@ -22,7 +22,7 @@ h = random.getrandbits(128)
 
 
 def export_dataset(out_dir, images):
-    with open('/Users/mlangford/Downloads/GSHHS_f_NAmerica.txt') as f:
+    with open('assets/GSHHS_f_NAmerica.txt') as f:
         data = f.readlines()
 
     points = np.array([list(map(float, d.replace(' ', '').replace('\n', '').split('\t'))) for d in data])
@@ -67,8 +67,8 @@ def load_or_generate(path, count):
     assert len(output) >= count
     return output
 
-x_train = np.stack(load_or_generate(TRAIN_PATH, 70000))
-x_test = np.stack(load_or_generate(TEST_PATH, 10000))
+x_train = np.stack(load_or_generate(TRAIN_PATH, 70))
+x_test = np.stack(load_or_generate(TEST_PATH, 10))
 #(x_train, _), (x_test, _) = fashion_mnist.load_data()
 
 
