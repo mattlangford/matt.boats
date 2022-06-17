@@ -380,6 +380,7 @@ dependencies = [
 name = "matt_boats"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "chrono",
  "getrandom",
  "gloo 0.7.0",
