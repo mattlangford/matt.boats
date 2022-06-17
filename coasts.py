@@ -11,6 +11,8 @@ from sklearn.model_selection import train_test_split
 from tensorflow.keras import layers, losses
 from tensorflow.keras.models import Model
 
+from tensorflow.keras.datasets import fashion_mnist
+
 
 TRAIN_PATH = "/tmp/coasts/train"
 TEST_PATH = "/tmp/coasts/test"
@@ -31,22 +33,21 @@ def export_dataset(out_dir, images):
 
         return np.vstack(((lons - ref[0]) * m_per_deg_lon, (lats - ref[1]) * m_per_deg_lat)).T
 
-    fig = plt.figure(figsize=(2,2))
+    fig = plt.figure(figsize=(0.5, 0.5))
     for i in range(images):
         plt.cla()
         ref = points[np.random.randint(len(points))]
         xy = to_xy(ref, points[:, 0], points[:, 1])
         plt.fill(xy[:, 0], xy[:, 1], 'green', linewidth=0.0)
-        plt.ylim(-50000, 50000)
-        plt.xlim(-50000, 50000)
+        plt.ylim(-25000, 25000)
+        plt.xlim(-25000, 25000)
         plt.axis('off')
         path = f"{out_dir}/{h:02x}_{i:05d}.png"
         print("Saving:", path)
 
         fig.savefig(path, facecolor='blue', bbox_inches='tight', pad_inches=0)
 
-
-DIM = 128
+DIM = 38
 
 def load_or_generate(path, count):
     if not os.path.exists(path):
@@ -66,8 +67,10 @@ def load_or_generate(path, count):
     assert len(output) >= count
     return output
 
-x_train = np.stack(load_or_generate(TRAIN_PATH, 5000))
-x_test = np.stack(load_or_generate(TEST_PATH, 300))
+x_train = np.stack(load_or_generate(TRAIN_PATH, 70000))
+x_test = np.stack(load_or_generate(TEST_PATH, 10000))
+#(x_train, _), (x_test, _) = fashion_mnist.load_data()
+
 
 x_train = x_train.astype('float32') / 255.
 x_test = x_test.astype('float32') / 255.
@@ -79,14 +82,12 @@ class Autoencoder(Model):
     self.latent_dim = latent_dim
 
     self.encoder = tf.keras.Sequential([
-        #layers.Conv2D(32, (3, 3), activation='relu', input_shape=(DIM, DIM, 1)),
-        #layers.MaxPooling2D(2, strides=2),
         layers.Flatten(),
         layers.Dense(latent_dim, activation='relu'),
     ])
     self.decoder = tf.keras.Sequential([
         layers.Dense(DIM * DIM, activation='sigmoid'),
-        layers.Reshape((DIM, DIM, 1)),
+        layers.Reshape((DIM, DIM)),
     ])
 
 
@@ -102,12 +103,14 @@ checkpoint_path = f"{CHECKPOINT_PATH}/cp.ckpt"
 checkpoint_dir = os.path.dirname(checkpoint_path)
 checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path, save_weights_only=True, verbose=1)
 
-autoencoder = Autoencoder(256)
+autoencoder = Autoencoder(128)
 autoencoder.compile(optimizer='adam', loss=losses.MeanSquaredError())
+
 autoencoder.build((None, DIM, DIM, 1))
 autoencoder.summary()
 autoencoder.fit(x_train, x_train,
-                epochs=1000,
+                batch_size=64,
+                epochs=100,
                 shuffle=True,
                 validation_data=(x_test, x_test),
                 callbacks=[checkpoint_callback])
@@ -120,7 +123,7 @@ n = 10
 plt.figure(figsize=(20, 4))
 for i in range(n):
   # display original
-  ax = plt.subplot(2, n, i + 1)
+  ax = plt.subplot(3, n, i + 1)
   plt.imshow(x_test[i])
   plt.title("original")
   plt.gray()
@@ -128,11 +131,18 @@ for i in range(n):
   ax.get_yaxis().set_visible(False)
 
   # display reconstruction
-  ax = plt.subplot(2, n, i + 1 + n)
+  ax = plt.subplot(3, n, i + 1 + n)
   plt.imshow(decoded_imgs[i])
   plt.title("reconstructed")
   plt.gray()
   ax.get_xaxis().set_visible(False)
   ax.get_yaxis().set_visible(False)
 
+  # display reconstruction
+  ax = plt.subplot(3, n, i + 1 + 2 * n)
+  plt.imshow(np.where(decoded_imgs[i] > 0.5, np.ones_like(decoded_imgs[i]), np.zeros_like(decoded_imgs[i])))
+  plt.title("reconstructed binary")
+  plt.gray()
+  ax.get_xaxis().set_visible(False)
+  ax.get_yaxis().set_visible(False)
 plt.show()
