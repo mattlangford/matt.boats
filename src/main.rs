@@ -1,4 +1,5 @@
 mod map;
+use map::Map;
 
 use gloo::timers::callback::Interval;
 use nalgebra as na;
@@ -86,7 +87,7 @@ impl Component for Model {
 
 fn main() {
     log!("Starting parse!");
-    log!("{:?}", map::parse_map().unwrap().shape());
+    log!("{:?}", Map::generate().unwrap().data.data);
     //log!("Starting model...");
     //log!("{:?}", get_window_size());
     //yew::start_app::<Model>();
