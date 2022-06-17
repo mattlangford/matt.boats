@@ -85,7 +85,9 @@ impl Component for Model {
 }
 
 fn main() {
-    log!("Starting model...");
-    log!("{:?}", get_window_size());
-    yew::start_app::<Model>();
+    log!("Starting parse!");
+    log!("{:?}", map::parse_map().unwrap().shape());
+    //log!("Starting model...");
+    //log!("{:?}", get_window_size());
+    //yew::start_app::<Model>();
 }
