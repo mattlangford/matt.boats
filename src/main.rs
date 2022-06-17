@@ -1,11 +1,13 @@
+mod map;
+
 use gloo::timers::callback::Interval;
 use nalgebra as na;
 use wasm_bindgen::JsCast;
 use yew::prelude::*;
 
-use rand::seq::SliceRandom;
-use rand::Rng;
-use rand::SeedableRng;
+//use rand::seq::SliceRandom;
+//use rand::Rng;
+//use rand::SeedableRng;
 
 // Dish out to gloo::console since it doesn't format the inputs.
 macro_rules! log {
@@ -41,7 +43,7 @@ struct Model {
 }
 
 enum Msg {
-    Update(f64)
+    Update(f64),
 }
 
 impl Component for Model {
@@ -70,11 +72,11 @@ impl Component for Model {
         }
     }
 
-    fn view(&self, ctx: &Context<Self>) -> Html {
+    fn view(&self, _ctx: &Context<Self>) -> Html {
         let window_size = get_window_size().expect("Unable to get window size.");
         html! {
             <>
-                <div id="container">
+                <div id="container" style="background-image: url('assets/test.png');">
                     {"hello world!"}
                 </div>
             </>
