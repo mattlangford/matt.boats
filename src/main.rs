@@ -41,43 +41,47 @@ fn get_viewbox_size() -> Option<na::Vector2<f64>> {
 }
 
 struct BackgroundMap {
-    points: Vec<na::Vector2<f32>>,
-    ports: Vec<na::Vector2<f32>>,
+    map: Map,
+    zoom: bool,
+}
+
+enum Msg {
+    ZoomToggle,
 }
 
 impl Component for BackgroundMap {
-    type Message = ();
+    type Message = Msg;
     type Properties = ();
 
     fn create(_ctx: &Context<Self>) -> Self {
-        let map = Map::generate().unwrap();
         let viewbox_size = get_viewbox_size().expect("Unable to get viewBox size.");
-        let points = map.center_and_crop(
-            rand::thread_rng().gen_range(0..map.num_points()),
-            viewbox_size[0] as f32,
-            viewbox_size[1] as f32,
+        let map = Map::generate_random(viewbox_size[0] as f32, viewbox_size[1] as f32);
+
+        log!(
+            "Loaded {} coordinates and {} ports",
+            map.coordinates.len(),
+            map.ports.len()
         );
 
-        let mut rng = rand::thread_rng();
-        let mut ports = Vec::<na::Vector2<f32>>::new();
-        for _ in 0..50 {
-            let pt = points.choose(&mut rng).unwrap();
-            if ports.iter().any(|&other| (other - pt).norm() < 5000.0) {
-                continue;
-            }
-            ports.push(*pt);
-        }
-
-        log!("{} points", points.len());
         Self {
-            points: points,
-            ports: ports,
+            map: map,
+            zoom: true,
         }
     }
 
-    fn view(&self, _ctx: &Context<Self>) -> Html {
+    fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
+        match msg {
+            Self::Message::ZoomToggle => {
+                self.zoom = !self.zoom;
+                true
+            }
+        }
+    }
+
+    fn view(&self, ctx: &Context<Self>) -> Html {
         let window_size = get_window_size().expect("Unable to get window size.");
-        let viewbox_size = get_viewbox_size().expect("Unable to get viewBox size.");
+        let scale = if self.zoom { 1.0 } else { 200.0 };
+        let viewbox_size = scale * get_viewbox_size().expect("Unable to get viewBox size.");
 
         let style_string = format!("width:{}px;height:{}px", window_size[0], window_size[1]);
 
@@ -90,18 +94,28 @@ impl Component for BackgroundMap {
         );
 
         let point_str = self
-            .points
+            .map
+            .coordinates
             .iter()
             .map(|pt| format!("{:.3},{:.3} ", pt[0], pt[1]))
             .collect::<String>();
 
-        let port_size = 500.0;
+        let port_size = (scale * 500.0) as f32;
 
         html! {
-            <div id="container" style={style_string}>
+            <div id="container" style={style_string} onclick={ctx.link().callback(|_| Self::Message::ZoomToggle )}>
                 <svg width="100%" height="100%" viewBox={viewbox_string} preserveAspectRatio="none" style="display: block; transform: scale(1,-1)">
                     <polyline class="land" points={point_str}/>
-                    {for self.ports.iter().map(|pt| html!{ <rect class="port" x={f(pt[0] - 0.5 * port_size)} y={f(pt[1] - 0.5 * port_size)} height={f(port_size)} width={f(port_size)}/> })}
+
+                    //{
+                    //for self.ports.iter().map(|pt| html!{
+                    //    <rect class="port"
+                    //        x={f(pt[0] - 0.5 * port_size)}
+                    //        y={f(pt[1] - 0.5 * port_size)}
+                    //        height={f(port_size)}
+                    //        width={f(port_size)}/>
+                    //    })
+                    //}
                 </svg>
             </div>
         }
