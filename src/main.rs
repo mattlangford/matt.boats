@@ -81,16 +81,16 @@ impl Component for BackgroundMap {
     fn view(&self, ctx: &Context<Self>) -> Html {
         let window_size = get_window_size().expect("Unable to get window size.");
         let scale = if self.zoom { 1.0 } else { 200.0 };
-        let viewbox_size = scale * get_viewbox_size().expect("Unable to get viewBox size.");
+        let viewbox_size = get_viewbox_size().expect("Unable to get viewBox size.");
 
         let style_string = format!("width:{}px;height:{}px", window_size[0], window_size[1]);
 
         let viewbox_string = format!(
             "{} {} {} {}",
-            -0.5 * viewbox_size[0],
-            -0.5 * viewbox_size[1],
-            viewbox_size[0],
-            viewbox_size[1]
+            -0.5 * scale * viewbox_size[0],
+            -0.5 * scale * viewbox_size[1],
+            scale * viewbox_size[0],
+            scale * viewbox_size[1]
         );
 
         let point_str = self

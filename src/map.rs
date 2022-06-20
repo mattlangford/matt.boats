@@ -71,7 +71,9 @@ impl Map {
         let lon_lat = na::Matrix2xX::<f32>::from_vec(
             bincode::deserialize(MAP_DATA).expect("Unable to load raw map data."),
         );
-        let mut rng = rand::rngs::StdRng::seed_from_u64(SEED);
+
+        //let mut rng = rand::rngs::StdRng::seed_from_u64(SEED);
+        let mut rng = rand::thread_rng();
         let dist = rand::distributions::Uniform::from(0..lon_lat.ncols());
         let lon_lat_ref = lon_lat.column(dist.sample(&mut rng)).clone();
         let lon_lat_scale = lon_lat_scale(lon_lat_ref);
