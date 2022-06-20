@@ -8,9 +8,9 @@ use nalgebra as na;
 use wasm_bindgen::JsCast;
 use yew::prelude::*;
 
-//use rand::seq::SliceRandom;
+use rand::seq::SliceRandom;
 use rand::Rng;
-//use rand::SeedableRng;
+use rand::SeedableRng;
 
 // Dish out to gloo::console since it doesn't format the inputs.
 macro_rules! log {
@@ -42,13 +42,14 @@ fn get_viewbox_size() -> Option<na::Vector2<f64>> {
 
 struct BackgroundMap {
     points: Vec<na::Vector2<f32>>,
+    ports: Vec<na::Vector2<f32>>,
 }
 
 impl Component for BackgroundMap {
     type Message = ();
     type Properties = ();
 
-    fn create(ctx: &Context<Self>) -> Self {
+    fn create(_ctx: &Context<Self>) -> Self {
         let map = Map::generate().unwrap();
         let viewbox_size = get_viewbox_size().expect("Unable to get viewBox size.");
         let points = map.center_and_crop(
@@ -56,9 +57,22 @@ impl Component for BackgroundMap {
             viewbox_size[0] as f32,
             viewbox_size[1] as f32,
         );
-        //let points = map.center_and_crop(10000, viewbox_size[0] as f32, viewbox_size[1] as f32);
+
+        let mut rng = rand::thread_rng();
+        let mut ports = Vec::<na::Vector2<f32>>::new();
+        for _ in 0..50 {
+            let pt = points.choose(&mut rng).unwrap();
+            if ports.iter().any(|&other| (other - pt).norm() < 5000.0) {
+                continue;
+            }
+            ports.push(*pt);
+        }
+
         log!("{} points", points.len());
-        Self { points: points }
+        Self {
+            points: points,
+            ports: ports,
+        }
     }
 
     fn view(&self, _ctx: &Context<Self>) -> Html {
@@ -81,11 +95,13 @@ impl Component for BackgroundMap {
             .map(|pt| format!("{:.3},{:.3} ", pt[0], pt[1]))
             .collect::<String>();
 
+        let port_size = 500.0;
+
         html! {
             <div id="container" style={style_string}>
                 <svg width="100%" height="100%" viewBox={viewbox_string} preserveAspectRatio="none" style="display: block; transform: scale(1,-1)">
-                    {for self.points.iter().map(|pt| html!{ <circle cx={f(pt[0])} cy={f(pt[1])} r="0.25%"/> }) }
-                    <polyline points={point_str} fill="green" stroke="black" stroke-width="0.1%"/>
+                    <polyline class="land" points={point_str}/>
+                    {for self.ports.iter().map(|pt| html!{ <rect class="port" x={f(pt[0] - 0.5 * port_size)} y={f(pt[1] - 0.5 * port_size)} height={f(port_size)} width={f(port_size)}/> })}
                 </svg>
             </div>
         }

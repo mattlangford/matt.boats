@@ -94,28 +94,25 @@ impl Map {
         let step_size = |xy: &na::Vector2<f32>| {
             let dist = (xy - ref_xy).norm();
             let max_dim = width_m.max(height_m);
-            if dist < max_dim {
+            if dist < 1.5 * max_dim {
                 return 1;
             }
-            if dist < 1.5 * max_dim {
-                return 2;
-            }
             if dist < 2.0 * max_dim {
-                return 5;
+                return 10;
             }
             if dist < 2.5 * max_dim {
-                return 50;
-            }
-            if dist < 3.0 * max_dim {
                 return 100;
             }
-            if dist < 4.0 * max_dim {
+            if dist < 3.0 * max_dim {
                 return 500;
             }
-            if dist < 5.0 * max_dim {
+            if dist < 4.0 * max_dim {
                 return 1000;
             }
-            2000
+            if dist < 5.0 * max_dim {
+                return 2000;
+            }
+            5000
         };
 
         let stopping_point = start + self.data.ncols();
@@ -123,8 +120,6 @@ impl Map {
         while end < stopping_point {
             let pt = to_xy(self.data.column(end % self.data.ncols()));
             let step = step_size(&pt);
-
-            let dist = (pt - ref_xy).norm();
             result.push(pt);
             end += step;
         }
