@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 
+mod geom;
 mod map;
 use map::Map;
 
@@ -107,15 +108,15 @@ impl Component for BackgroundMap {
                 <svg width="100%" height="100%" viewBox={viewbox_string} preserveAspectRatio="none" style="display: block; transform: scale(1,-1)">
                     <polyline class="land" points={point_str}/>
 
-                    //{
-                    //for self.ports.iter().map(|pt| html!{
-                    //    <rect class="port"
-                    //        x={f(pt[0] - 0.5 * port_size)}
-                    //        y={f(pt[1] - 0.5 * port_size)}
-                    //        height={f(port_size)}
-                    //        width={f(port_size)}/>
-                    //    })
-                    //}
+                    {
+                    for self.map.ports.iter().map(|pt| html!{
+                        <rect class="port"
+                            x={f(pt[0] - 0.5 * port_size)}
+                            y={f(pt[1] - 0.5 * port_size)}
+                            height={f(port_size)}
+                            width={f(port_size)}/>
+                        })
+                    }
                 </svg>
             </div>
         }

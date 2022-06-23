@@ -5,6 +5,8 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 use rand::SeedableRng;
 
+use crate::geom::*;
+
 // Load data at compile time since loading files in JS is a mess.
 const MAP_DATA: &[u8] = include_bytes!("map.bin");
 
@@ -15,7 +17,7 @@ macro_rules! log {
     );
 }
 
-fn lon_lat_scale(lon_lat_ref: na::VectorSlice2<f32>) -> na::Vector2<f32> {
+fn lon_lat_scale(lon_lat_ref: na::VectorSlice2<f32>) -> Vector2f {
     let lat_rad = lon_lat_ref[1] * std::f32::consts::PI / 180.0;
     const M0: f32 = 111132.954;
     const M1: f32 = 559.822;
@@ -53,15 +55,17 @@ fn generate_bounds(
 fn lon_lat_to_xy(
     center: na::VectorSlice2<f32>,
     lon_lat: na::VectorSlice2<f32>,
-    scale: &na::Vector2<f32>,
-) -> na::Vector2<f32> {
+    scale: &Vector2f,
+) -> Vector2f {
     let diff = lon_lat - center;
     na::Vector2::<f32>::new(diff[0] * scale[0], diff[1] * scale[1])
 }
 
 pub struct Map {
-    pub coordinates: Vec<na::Vector2<f32>>,
-    pub ports: Vec<na::Vector2<f32>>,
+    width_m: f32,
+    height_m: f32,
+    pub coordinates: Vec<Vector2f>,
+    pub ports: Vec<Vector2f>,
 }
 
 const SEED: u64 = 42;
@@ -92,18 +96,19 @@ impl Map {
             .zip(it.skip(1))
             .flat_map(|(end, start)| {
                 const STEPS: usize = 100;
-                (end..start)
-                    .step_by(((start - end) / STEPS).max(1))
-                    .map(|i| {
-                        log!("{}", i);
-                        lon_lat.column(i)
-                    })
+                (end..start).step_by(100).map(|i| lon_lat.column(i))
             })
             .map(|pt| lon_lat_to_xy(lon_lat_ref, pt, &lon_lat_scale));
 
+        let ports = (0..lon_lat.ncols())
+            .step_by(1000)
+            .map(|i| lon_lat_to_xy(lon_lat_ref, lon_lat.column(i), &lon_lat_scale));
+
         Self {
+            width_m: width_m,
+            height_m: height_m,
             coordinates: coordinates.collect(),
-            ports: Vec::new(),
+            ports: ports.collect(),
         }
     }
 
