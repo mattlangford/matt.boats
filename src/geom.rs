@@ -29,14 +29,22 @@ impl Line {
     }
 }
 
-pub fn intersect_lines(a: &Line, b: &Line) -> Option<Vector2f> {
+pub fn intersect_segment(a: &Line, start: &Vector2f, end: &Vector2f) -> Option<Vector2f> {
+    let len_sq = (end - start).norm_squared();
     na::linalg::LU::new(na::Matrix2::<f32>::from_columns(&[
         a.direction,
-        -b.direction,
+        start - end,
     ]))
-    .solve(&(b.start - a.start))
-    .filter(|tu| tu[0] >= 0.0 && tu[0] < a.length && tu[1] >= 0.0 && tu[1] < b.length)
+    .solve(&(start - a.start))
+    .filter(|tu| tu[0] >= 0.0 && tu[0] < a.length && tu[1] >= 0.0 && (tu[1] * tu[1]) < len_sq)
     .map(|tu| a.start + tu[0] * a.direction)
+}
+
+pub fn intersect_ray(a: &Line, start: &Vector2f, direction: &Vector2f) -> Option<Vector2f> {
+    na::linalg::LU::new(na::Matrix2::<f32>::from_columns(&[a.direction, -direction]))
+        .solve(&(start - a.start))
+        .filter(|tu| tu[0] >= 0.0 && tu[0] < a.length && tu[1] >= 0.0)
+        .map(|tu| a.start + tu[0] * a.direction)
 }
 
 #[cfg(test)]
@@ -44,42 +52,58 @@ mod tests {
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
 
+    fn v(x: f32, y: f32) -> Vector2f {
+        na::vector![x, y]
+    }
+
     #[test]
     fn test_intersect() {
         // parallel
         assert_eq!(
-            intersect_lines(
-                &Line::new_ray(na::vector![0.0, 0.0], na::vector![1.0, 0.0]),
-                &Line::new_ray(na::vector![1.0, 1.0], na::vector![1.0, 0.0])
+            intersect_segment(
+                &Line::new_ray(v(0.0, 0.0), v(1.0, 0.0)),
+                &v(0.0, 1.0),
+                &v(1.0, 1.0)
             ),
             None
         );
 
         // simple
         assert_eq!(
-            intersect_lines(
-                &Line::new_ray(na::vector![0.0, 0.0], na::vector![1.0, 0.0]),
-                &Line::new_ray(na::vector![1.0, 1.0], na::vector![0.0, -1.0])
+            intersect_segment(
+                &Line::new_ray(v(0.0, 0.0), v(1.0, 0.0)),
+                &v(1.0, 1.0),
+                &v(1.0, -2.0)
             ),
-            Some(na::vector![1.0, 0.0])
+            Some(v(1.0, 0.0))
         );
 
         // too short
         assert_eq!(
-            intersect_lines(
-                &Line::new(na::vector![0.0, 0.0], na::vector![1.0, 0.0], 0.1),
-                &Line::new_ray(na::vector![1.0, 1.0], na::vector![0.0, -1.0])
+            intersect_segment(
+                &Line::new(v(0.0, 0.0), v(1.0, 0.0), 0.1),
+                &v(1.0, 1.0),
+                &v(1.0, -10.0)
             ),
             None
         );
 
         // complex
         assert_eq!(
-            intersect_lines(
-                &Line::new_segment(na::vector![4.0, 2.1], na::vector![-4.0, 4.1]),
-                &Line::new_segment(na::vector![-2.0, 1.1], na::vector![2.0, 5.1])
+            intersect_segment(
+                &Line::new_segment(v(4.0, 2.0), v(-4.0, 4.0)),
+                &v(-2.0, 1.0),
+                &v(2.0, 5.0)
             ),
-            Some(na::vector![0.0, 3.1])
+            Some(v(0.0, 3.0))
+        );
+        assert_eq!(
+            intersect_ray(
+                &Line::new_segment(v(4.0, 2.0), v(-4.0, 4.0)),
+                &v(-2.0, 1.0),
+                &v(1.0, 1.0)
+            ),
+            Some(v(0.0, 3.0))
         );
     }
 }
