@@ -56,14 +56,13 @@ impl Component for BackgroundMap {
 
     fn create(_ctx: &Context<Self>) -> Self {
         let viewbox_size = get_viewbox_size().expect("Unable to get viewBox size.");
-        let map = Map::generate_random(viewbox_size[0] as f32, viewbox_size[1] as f32);
+        let map = Map::generate_random2(viewbox_size[0] as f32, viewbox_size[1] as f32);
 
         log!(
             "Loaded {} coordinates and {} ports",
             map.coordinates.len(),
             map.ports.len()
         );
-
         Self {
             map: map,
             zoom: true,
@@ -81,7 +80,7 @@ impl Component for BackgroundMap {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let window_size = get_window_size().expect("Unable to get window size.");
-        let scale = if self.zoom { 1.0 } else { 200.0 };
+        let scale = if self.zoom { 1.0 } else { 1.2 };
         let viewbox_size = get_viewbox_size().expect("Unable to get viewBox size.");
 
         let style_string = format!("width:{}px;height:{}px", window_size[0], window_size[1]);
@@ -107,6 +106,15 @@ impl Component for BackgroundMap {
             <div id="container" style={style_string} onclick={ctx.link().callback(|_| Self::Message::ZoomToggle )}>
                 <svg width="100%" height="100%" viewBox={viewbox_string} preserveAspectRatio="none" style="display: block; transform: scale(1,-1)">
                     <polyline class="land" points={point_str}/>
+                    {
+                    for self.map.coordinates.iter().map(|pt| html!{
+                        <circle
+                            cx={f(pt[0])}
+                            cy={f(pt[1])}
+                            r="0.5%"
+                            />
+                        })
+                    }
 
                     {
                     for self.map.ports.iter().map(|pt| html!{
@@ -117,6 +125,12 @@ impl Component for BackgroundMap {
                             width={f(port_size)}/>
                         })
                     }
+
+                    <rect fill="none" stroke="red" stroke-width="0.5%"
+                        x={f(-0.5 * self.map.width_m)}
+                        y={f(-0.5 * self.map.height_m)}
+                        height={f(self.map.height_m)}
+                        width={f(self.map.width_m)}/>
                 </svg>
             </div>
         }
