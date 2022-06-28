@@ -131,6 +131,8 @@ impl Map {
             }
         }
 
+        let ports = coordinates.choose_multiple(&mut rng, 2).cloned().collect();
+
         Self {
             width_m: width_m,
             height_m: height_m,
