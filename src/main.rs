@@ -56,7 +56,7 @@ impl Component for BackgroundMap {
 
     fn create(_ctx: &Context<Self>) -> Self {
         let viewbox_size = get_viewbox_size().expect("Unable to get viewBox size.");
-        let map = Map::generate_random2(viewbox_size[0] as f32, viewbox_size[1] as f32);
+        let map = Map::generate_random(viewbox_size[0] as f32, viewbox_size[1] as f32);
 
         log!(
             "Loaded {} coordinates and {} ports",
