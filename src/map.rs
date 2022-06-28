@@ -85,9 +85,10 @@ impl Map {
         );
 
         //let mut rng = rand::rngs::StdRng::seed_from_u64(SEED);
-        let mut rng = rand::thread_rng();
-        let dist = rand::distributions::Uniform::from(0..lon_lat.ncols());
-        let lon_lat_ref = lon_lat.column(dist.sample(&mut rng)).clone();
+        //let mut rng = rand::thread_rng();
+        //let dist = rand::distributions::Uniform::from(0..lon_lat.ncols());
+        let start_index = 5; //dist.sample(&mut rng);
+        let lon_lat_ref = lon_lat.column(start_index).clone();
         let bounds = generate_bounds(lon_lat_ref, width_m, height_m);
 
         let to_xy = generate_to_xy(lon_lat_ref);
@@ -127,9 +128,9 @@ impl Map {
         );
 
         //let mut rng = rand::rngs::StdRng::seed_from_u64(SEED);
-        //let mut rng = rand::thread_rng();
-        //let dist = rand::distributions::Uniform::from(0..lon_lat.ncols());
-        let start_index = 5; //dist.sample(&mut rng);
+        let mut rng = rand::thread_rng();
+        let dist = rand::distributions::Uniform::from(0..lon_lat.ncols());
+        let start_index = dist.sample(&mut rng);
         let lon_lat_ref = lon_lat.column(start_index).clone();
 
         let corners = generate_corners(width_m, height_m);
@@ -160,26 +161,16 @@ impl Map {
                 .filter_map(|l| intersect_segment(l, &start, &end))
                 .collect::<Vec<Vec2f>>();
             if !intersections.is_empty() {
-                inside = bounds
-                    .iter()
-                    .take(4)
-                    .filter_map(|l| intersect_ray(l, &end, &Vec2f::new(1.0, 0.0)))
-                    .count()
-                    % 2
-                    == 1;
+                inside = point_in_polygon(end, &corners);
             }
 
-            intersections.sort_by_key(|pt| ((pt - start).norm_squared() * 1000.0) as u64);
+            intersections.sort_by_key(|pt| (pt - start).norm_squared() as u64);
             for intersection in intersections {
                 coordinates.push(intersection);
             }
 
             if inside {
                 coordinates.push(start);
-            }
-
-            if coordinates.len() > 2000 {
-                break;
             }
         }
 
@@ -189,9 +180,5 @@ impl Map {
             coordinates: coordinates,
             ports: ports,
         }
-    }
-
-    pub fn num_points(&self) -> usize {
-        self.coordinates.len()
     }
 }

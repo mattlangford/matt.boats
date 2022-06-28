@@ -60,7 +60,6 @@ pub fn point_in_polygon(pt: &Vec2f, poly: &[Vec2f]) -> bool {
         .zip(ring_iter(poly.iter(), 1))
         .filter(|(start, end)| intersect_segment(&ray, start, end).is_some())
         .count();
-    println!("hits: {}", hits);
     hits % 2 == 1
 }
 

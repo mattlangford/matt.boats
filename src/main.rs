@@ -106,15 +106,15 @@ impl Component for BackgroundMap {
             <div id="container" style={style_string} onclick={ctx.link().callback(|_| Self::Message::ZoomToggle )}>
                 <svg width="100%" height="100%" viewBox={viewbox_string} preserveAspectRatio="none" style="display: block; transform: scale(1,-1)">
                     <polyline class="land" points={point_str}/>
-                    {
-                    for self.map.coordinates.iter().map(|pt| html!{
-                        <circle
-                            cx={f(pt[0])}
-                            cy={f(pt[1])}
-                            r="0.5%"
-                            />
-                        })
-                    }
+                    //{
+                    //for self.map.coordinates.iter().map(|pt| html!{
+                    //    <circle
+                    //        cx={f(pt[0])}
+                    //        cy={f(pt[1])}
+                    //        r="0.5%"
+                    //        />
+                    //    })
+                    //}
 
                     {
                     for self.map.ports.iter().map(|pt| html!{
