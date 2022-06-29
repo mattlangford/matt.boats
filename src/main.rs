@@ -2,6 +2,7 @@
 
 mod geom;
 mod map;
+use geom::*;
 use map::Map;
 
 use gloo::timers::callback::Interval;
@@ -85,12 +86,13 @@ impl Component for BackgroundMap {
 
         let style_string = format!("width:{}px;height:{}px", window_size[0], window_size[1]);
 
+        let corner = Vec2f::new(0.5 * viewbox_size[0] as f32, 0.5 * viewbox_size[1] as f32);
         let viewbox_string = format!(
             "{} {} {} {}",
-            -0.5 * scale * viewbox_size[0],
-            -0.5 * scale * viewbox_size[1],
-            scale * viewbox_size[0],
-            scale * viewbox_size[1]
+            -scale * corner[0],
+            -scale * corner[1],
+            2.0 * scale * corner[0],
+            2.0 * scale * corner[1]
         );
 
         let point_str = self
@@ -101,6 +103,8 @@ impl Component for BackgroundMap {
             .collect::<String>();
 
         let port_size = (scale * 500.0) as f32;
+
+        let random_points = generate_random_points(1000, &-corner, &corner);
 
         html! {
             <div id="container" style={style_string} onclick={ctx.link().callback(|_| Self::Message::ZoomToggle )}>
@@ -123,6 +127,16 @@ impl Component for BackgroundMap {
                             y={f(pt[1] - 0.5 * port_size)}
                             height={f(port_size)}
                             width={f(port_size)}/>
+                        })
+                    }
+
+                    {
+                    for random_points.iter().map(|pt| html!{
+                        <circle
+                            cx={f(pt[0])}
+                            cy={f(pt[1])}
+                            r="0.5%"
+                            fill={if point_in_polygon(&pt, &self.map.coordinates) { "red" } else { "yellow" }}/>
                         })
                     }
 
