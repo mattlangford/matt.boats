@@ -1,3 +1,4 @@
+use crate::utils::*;
 use nalgebra as na;
 use rand::distributions::Distribution;
 
@@ -8,13 +9,6 @@ pub struct Line {
     pub start: Vec2f,
     pub direction: Vec2f,
     pub length: f32,
-}
-
-pub fn ring_iter<'a, T: 'a>(
-    v: impl Iterator<Item = T> + Clone,
-    start: usize,
-) -> impl Iterator<Item = T> {
-    v.clone().skip(start).chain(v.take(start))
 }
 
 impl Line {
@@ -69,6 +63,13 @@ pub fn generate_random_points(count: usize, lower: &Vec2f, upper: &Vec2f) -> Vec
     let y_gen = rand::distributions::Uniform::from(lower[1]..upper[1]);
     (0..count)
         .map(|_| Vec2f::new(x_gen.sample(&mut rng), y_gen.sample(&mut rng)))
+        .collect()
+}
+
+pub fn generate_points_on_line(count: usize, line: &Line) -> Vec<Vec2f> {
+    (0..count)
+        .map(|i| i as f32 / count as f32)
+        .map(|t| line.start + line.length * t * line.direction)
         .collect()
 }
 

@@ -2,8 +2,10 @@
 
 mod geom;
 mod map;
+mod utils;
 use geom::*;
-use map::Map;
+use map::*;
+use utils::*;
 
 use gloo::timers::callback::Interval;
 use nalgebra as na;
@@ -14,7 +16,6 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 use rand::SeedableRng;
 
-// Dish out to gloo::console since it doesn't format the inputs.
 macro_rules! log {
     ($($arg:tt)+) => (
         gloo::console::log!(format!($($arg)+));
@@ -104,7 +105,8 @@ impl Component for BackgroundMap {
 
         let port_size = (scale * 500.0) as f32;
 
-        let random_points = generate_random_points(1000, &-corner, &corner);
+        let edges = generate_edges(viewbox_size[0] as f32, viewbox_size[1] as f32);
+        let edge_points = edges.iter().flat_map(|l| generate_points_on_line(10, l));
 
         html! {
             <div id="container" style={style_string} onclick={ctx.link().callback(|_| Self::Message::ZoomToggle )}>
@@ -131,12 +133,12 @@ impl Component for BackgroundMap {
                     }
 
                     {
-                    for random_points.iter().map(|pt| html!{
+                    for edge_points.filter(|pt| !point_in_polygon(&pt, &self.map.coordinates)).map(|pt| html!{
                         <circle
                             cx={f(pt[0])}
                             cy={f(pt[1])}
                             r="0.5%"
-                            fill={if point_in_polygon(&pt, &self.map.coordinates) { "red" } else { "yellow" }}/>
+                            fill="yellow"/>
                         })
                     }
 

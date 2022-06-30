@@ -6,16 +6,10 @@ use rand::Rng;
 use rand::SeedableRng;
 
 use crate::geom::*;
+use crate::utils::*;
 
 // Load data at compile time since loading files in JS is a mess.
 const MAP_DATA: &[u8] = include_bytes!("map.bin");
-
-#[allow(unused_macros)]
-macro_rules! log {
-    ($($arg:tt)+) => (
-        gloo::console::log!(format!($($arg)+));
-    );
-}
 
 fn lon_lat_scale(lon_lat_ref: na::VectorSlice2<f32>) -> Vec2f {
     let lat_rad = lon_lat_ref[1] * std::f32::consts::PI / 180.0;
@@ -36,29 +30,14 @@ pub fn generate_corners(width_m: f32, height_m: f32) -> [Vec2f; 4] {
     ]
 }
 
-fn generate_bounds(
-    center: na::VectorSlice2<f32>,
-    width_m: f32,
-    height_m: f32,
-) -> impl Fn(na::VectorSlice2<f32>) -> bool {
-    let meter_per_deg = lon_lat_scale(center);
-    let mut min_lon = center[0] - 0.5 * width_m / meter_per_deg[0];
-    let mut max_lon = center[0] + 0.5 * width_m / meter_per_deg[0];
-    if min_lon > max_lon {
-        std::mem::swap(&mut min_lon, &mut max_lon);
-    }
-    let mut min_lat = center[1] - 0.5 * height_m / meter_per_deg[1];
-    let mut max_lat = center[1] + 0.5 * height_m / meter_per_deg[1];
-    if min_lat > max_lat {
-        std::mem::swap(&mut min_lat, &mut max_lat);
-    }
-
-    move |lon_lat: na::VectorSlice2<f32>| {
-        lon_lat[0] >= min_lon
-            && lon_lat[0] < max_lon
-            && lon_lat[1] >= min_lat
-            && lon_lat[1] < max_lat
-    }
+pub fn generate_edges(width_m: f32, height_m: f32) -> [Line; 4] {
+    let corners = generate_corners(width_m, height_m);
+    [
+        Line::new_segment(corners[0], corners[1]),
+        Line::new_segment(corners[1], corners[2]),
+        Line::new_segment(corners[2], corners[3]),
+        Line::new_segment(corners[3], corners[0]),
+    ]
 }
 
 fn generate_to_xy(center: na::VectorSlice2<f32>) -> impl Fn(na::VectorSlice2<f32>) -> Vec2f + '_ {
