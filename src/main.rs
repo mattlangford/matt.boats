@@ -131,7 +131,18 @@ impl Component for BackgroundMap {
                             width={f(port_size)}/>
                         })
                     }
-
+                    {
+                    for (0..10).map(|i| (i as f32 + 0.5)/ 10.0).map(|t| html! {
+                      <>
+                          <line x1={f(-corner[0])} y1={f(2.0 * t * corner[1] - corner[1])}
+                                x2={f(corner[0])}  y2={f(2.0 * t * corner[1] - corner[1])}
+                                stroke="black" stroke-width="0.1%" />
+                          <line y1={f(-corner[1])} x1={f(2.0 * t * corner[0] - corner[0])}
+                                y2={f(corner[1])}  x2={f(2.0 * t * corner[0] - corner[0])}
+                                stroke="black" stroke-width="0.1%" />
+                      </>
+                    })
+                    }
                     {
                     for edge_points.filter(|pt| !point_in_polygon(&pt, &self.map.coordinates)).map(|pt| html!{
                         <circle

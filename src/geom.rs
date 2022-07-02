@@ -48,7 +48,7 @@ pub fn intersect_ray(a: &Line, start: &Vec2f, direction: &Vec2f) -> Option<Vec2f
 }
 
 pub fn point_in_polygon(pt: &Vec2f, poly: &[Vec2f]) -> bool {
-    let ray = Line::new_ray(*pt, Vec2f::new(1.0, 0.0));
+    let ray = Line::new_ray(*pt, Vec2f::new(1.0, 1.0));
     let hits = poly
         .iter()
         .zip(ring_iter(poly.iter(), 1))
