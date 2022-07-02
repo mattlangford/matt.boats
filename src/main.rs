@@ -2,6 +2,7 @@
 
 mod geom;
 mod map;
+mod svg;
 mod utils;
 use geom::*;
 use map::*;
@@ -82,7 +83,7 @@ impl Component for BackgroundMap {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let window_size = get_window_size().expect("Unable to get window size.");
-        let scale = if self.zoom { 1.0 } else { 1.2 };
+        let scale: f32 = if self.zoom { 1.0 } else { 1.2 };
         let viewbox_size = get_viewbox_size().expect("Unable to get viewBox size.");
 
         let style_string = format!("width:{}px;height:{}px", window_size[0], window_size[1]);
@@ -103,8 +104,6 @@ impl Component for BackgroundMap {
             .map(|pt| format!("{:.3},{:.3} ", pt[0], pt[1]))
             .collect::<String>();
 
-        let port_size = (scale * 500.0) as f32;
-
         let edges = generate_edges(viewbox_size[0] as f32, viewbox_size[1] as f32);
         let edge_points = edges.iter().flat_map(|l| generate_points_on_line(10, l));
 
@@ -123,23 +122,17 @@ impl Component for BackgroundMap {
                     //}
 
                     {
-                    for self.map.ports.iter().map(|pt| html!{
-                        <rect class="port"
-                            x={f(pt[0] - 0.5 * port_size)}
-                            y={f(pt[1] - 0.5 * port_size)}
-                            height={f(port_size)}
-                            width={f(port_size)}/>
-                        })
+                    for self.map.ports.iter().map(|pt|
+                        html!{<svg::Rect ..svg::RectProps::square_centered_at_with_class(pt[0], pt[1], 500.0 * scale, "port")/>
+                    })
                     }
                     {
                     for (0..10).map(|i| (i as f32 + 0.5)/ 10.0).map(|t| html! {
                       <>
-                          <line x1={f(-corner[0])} y1={f(2.0 * t * corner[1] - corner[1])}
-                                x2={f(corner[0])}  y2={f(2.0 * t * corner[1] - corner[1])}
-                                stroke="black" stroke-width="0.1%" />
-                          <line y1={f(-corner[1])} x1={f(2.0 * t * corner[0] - corner[0])}
-                                y2={f(corner[1])}  x2={f(2.0 * t * corner[0] - corner[0])}
-                                stroke="black" stroke-width="0.1%" />
+                        <svg::Line x1={-corner[0]} y1={2.0 * t * corner[1] - corner[1]}
+                                   x2={corner[0]} y2={2.0 * t * corner[1] - corner[1]} class={Some("gridline".to_string())}/>
+                        <svg::Line y1={-corner[1]} x1={2.0 * t * corner[0] - corner[0]}
+                                   y2={corner[1]} x2={2.0 * t * corner[0] - corner[0]} class={Some("gridline".to_string())}/>
                       </>
                     })
                     }
