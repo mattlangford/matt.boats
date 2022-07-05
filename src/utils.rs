@@ -11,3 +11,11 @@ pub fn ring_iter<'a, T: 'a>(
 ) -> impl Iterator<Item = T> {
     v.clone().skip(start).chain(v.take(start))
 }
+
+pub fn minmax<T: std::cmp::PartialOrd>(lhs: T, rhs: T) -> (T, T) {
+    if lhs <= rhs {
+        (lhs, rhs)
+    } else {
+        (rhs, lhs)
+    }
+}

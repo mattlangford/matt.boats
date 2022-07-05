@@ -11,6 +11,12 @@ pub struct Line {
     pub length: f32,
 }
 
+#[derive(Debug, Default)]
+pub struct AABox {
+    pub start: Vec2f,
+    pub dim: Vec2f,
+}
+
 impl Line {
     pub fn new_segment(start: Vec2f, end: Vec2f) -> Line {
         let diff = end - start;
@@ -29,6 +35,78 @@ impl Line {
             length: length,
         }
     }
+}
+
+impl AABox {
+    pub fn new_square(start: Vec2f, dim: f32) -> AABox {
+        AABox {
+            start: start,
+            dim: Vec2f::new(dim, dim),
+        }
+    }
+    pub fn new_square_center(center: Vec2f, dim: f32) -> AABox {
+        let dim2d = Vec2f::new(dim, dim);
+        AABox {
+            start: center - dim2d,
+            dim: dim2d,
+        }
+    }
+
+    pub fn corners(&self) -> [Vec2f; 4] {
+        [
+            self.start,
+            self.start + Vec2f::new(self.dim[0], 0.0),
+            self.start + self.dim,
+            self.start + Vec2f::new(0.0, self.dim[1]),
+        ]
+    }
+
+    pub fn edges(&self) -> [Line; 4] {
+        let corners = self.corners();
+        [
+            Line::new_segment(corners[0], corners[1]),
+            Line::new_segment(corners[1], corners[2]),
+            Line::new_segment(corners[2], corners[3]),
+            Line::new_segment(corners[3], corners[0]),
+        ]
+    }
+}
+
+pub fn aabox_are_adjacent(lhs: &AABox, rhs: &AABox) -> bool {
+    const TOL: f32 = 1E-3;
+
+    let eq = |lhs: f32, rhs: f32| (lhs - rhs).abs() < TOL;
+    let lt = |lhs: f32, rhs: f32| lhs - rhs < -TOL;
+    let gt = |lhs: f32, rhs: f32| lhs - rhs > TOL;
+
+    let lhs_corners = lhs.corners();
+    let rhs_corners = rhs.corners();
+
+    let lhs_x_range = minmax(lhs_corners[0].x, lhs_corners[2].x);
+    let rhs_x_range = minmax(rhs_corners[0].x, rhs_corners[2].x);
+    let lhs_y_range = minmax(lhs_corners[0].y, lhs_corners[2].y);
+    let rhs_y_range = minmax(rhs_corners[0].y, rhs_corners[2].y);
+
+    let range_union = |lhs: &(f32, f32), rhs: &(f32, f32)| {
+        if eq(lhs.0, rhs.0) && eq(lhs.1, rhs.1) {
+            // same line
+            return true;
+        }
+        if (lt(lhs.0, rhs.0) || eq(lhs.0, rhs.0)) && gt(lhs.1, rhs.0) {
+            // lhs starts before rhs and ends either in or after rhs
+            return true;
+        }
+        if (lt(rhs.0, lhs.0) || eq(rhs.0, lhs.0)) && gt(rhs.1, lhs.0) {
+            // rhs starts before lhs and ends either in or after rhs
+            return true;
+        }
+        return false;
+    };
+
+    ((eq(lhs_x_range.0, rhs_x_range.1) || eq(lhs_x_range.1, rhs_x_range.0))
+        && range_union(&lhs_y_range, &rhs_y_range))
+        || ((eq(lhs_y_range.0, rhs_y_range.1) || eq(lhs_y_range.1, rhs_y_range.0))
+            && range_union(&lhs_x_range, &rhs_x_range))
 }
 
 pub fn intersect_segment(l: &Line, start: &Vec2f, end: &Vec2f) -> Option<Vec2f> {
@@ -80,6 +158,31 @@ mod tests {
 
     fn v(x: f32, y: f32) -> Vec2f {
         na::vector![x, y]
+    }
+
+    #[test]
+    fn test_aabox_adjacent() {
+        let lhs = AABox::new_square(Vec2f::new(0.0, 0.0), 1.0);
+        assert_eq!(
+            aabox_are_adjacent(&lhs, &AABox::new_square(Vec2f::new(1.0, 0.0), 1.0)),
+            true
+        );
+        assert_eq!(
+            aabox_are_adjacent(&lhs, &AABox::new_square(Vec2f::new(1.1, 0.0), 1.0)),
+            false
+        );
+        assert_eq!(
+            aabox_are_adjacent(&lhs, &AABox::new_square(Vec2f::new(0.0, 1.0), 0.1)),
+            true
+        );
+        assert_eq!(
+            aabox_are_adjacent(&lhs, &AABox::new_square(Vec2f::new(0.5, 0.5), 0.1)),
+            false
+        );
+        assert_eq!(
+            aabox_are_adjacent(&lhs, &AABox::new_square(Vec2f::new(0.1, -1.0), 1.0)),
+            true
+        );
     }
 
     #[test]

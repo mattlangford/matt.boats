@@ -130,9 +130,11 @@ impl Component for BackgroundMap {
                     for (0..10).map(|i| (i as f32 + 0.5)/ 10.0).map(|t| html! {
                       <>
                         <svg::Line x1={-corner[0]} y1={2.0 * t * corner[1] - corner[1]}
-                                   x2={corner[0]} y2={2.0 * t * corner[1] - corner[1]} class={Some("gridline".to_string())}/>
+                                   x2={corner[0]} y2={2.0 * t * corner[1] - corner[1]}
+                                   class={Some("gridline".to_string())}/>
                         <svg::Line y1={-corner[1]} x1={2.0 * t * corner[0] - corner[0]}
-                                   y2={corner[1]} x2={2.0 * t * corner[0] - corner[0]} class={Some("gridline".to_string())}/>
+                                   y2={corner[1]} x2={2.0 * t * corner[0] - corner[0]}
+                                   class={Some("gridline".to_string())}/>
                       </>
                     })
                     }
