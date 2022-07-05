@@ -163,34 +163,34 @@ mod tests {
     #[test]
     fn test_aabox_adjacent() {
         let lhs = AABox::new_square(Vec2f::new(0.0, 0.0), 1.0);
-        assert_eq!(
-            aabox_are_adjacent(&lhs, &AABox::new_square(Vec2f::new(1.0, 0.0), 1.0)),
-            true
-        );
-        assert_eq!(
-            aabox_are_adjacent(&lhs, &AABox::new_square(Vec2f::new(1.1, 0.0), 1.0)),
-            false
-        );
-        assert_eq!(
-            aabox_are_adjacent(&lhs, &AABox::new_square(Vec2f::new(0.0, 1.0), 0.1)),
-            true
-        );
-        assert_eq!(
-            aabox_are_adjacent(&lhs, &AABox::new_square(Vec2f::new(0.5, 0.5), 0.1)),
-            false
-        );
-        assert_eq!(
-            aabox_are_adjacent(&lhs, &AABox::new_square(Vec2f::new(0.1, -1.0), 1.0)),
-            true
-        );
+        assert_true!(aabox_are_adjacent(
+            &lhs,
+            &AABox::new_square(Vec2f::new(1.0, 0.0), 1.0)
+        ));
+        assert_false!(aabox_are_adjacent(
+            &lhs,
+            &AABox::new_square(Vec2f::new(1.1, 0.0), 1.0)
+        ));
+        assert_true!(aabox_are_adjacent(
+            &lhs,
+            &AABox::new_square(Vec2f::new(0.0, 1.0), 0.1)
+        ));
+        assert_fakse!(aabox_are_adjacent(
+            &lhs,
+            &AABox::new_square(Vec2f::new(0.5, 0.5), 0.1)
+        ));
+        assert_true!(aabox_are_adjacent(
+            &lhs,
+            &AABox::new_square(Vec2f::new(0.1, -1.0), 1.0)
+        ));
     }
 
     #[test]
     fn test_point_in_polygon() {
         let triangle = [v(1.0, 1.0), v(1.0, -1.0), v(-1.0, 0.0)];
         // parallel
-        assert_eq!(point_in_polygon(&v(0.0, 0.0), &triangle), true);
-        assert_eq!(point_in_polygon(&v(2.0, 0.0), &triangle), false);
+        assert_true!(point_in_polygon(&v(0.0, 0.0), &triangle));
+        assert_false!(point_in_polygon(&v(2.0, 0.0), &triangle));
     }
 
     #[test]

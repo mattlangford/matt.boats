@@ -17,12 +17,6 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 use rand::SeedableRng;
 
-macro_rules! log {
-    ($($arg:tt)+) => (
-        gloo::console::log!(format!($($arg)+));
-    );
-}
-
 const HEIGHT: f64 = 50000.0;
 
 fn f<T: std::fmt::Display>(v: T) -> String {

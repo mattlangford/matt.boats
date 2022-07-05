@@ -5,6 +5,21 @@ macro_rules! log {
     );
 }
 
+macro_rules! assert_true {
+    ($exp: expr) => {
+        assert_eq!($exp, true);
+    };
+}
+macro_rules! assert_false {
+    ($exp: expr) => {
+        assert_eq!($exp, true);
+    };
+}
+
+pub(crate) use assert_false;
+pub(crate) use assert_true;
+pub(crate) use log;
+
 pub fn ring_iter<'a, T: 'a>(
     v: impl Iterator<Item = T> + Clone,
     start: usize,
