@@ -121,7 +121,7 @@ impl Component for Boxes {
                         x2={f(end[0])}
                         y2={f(end[1])}
                         stroke="yellow"
-                        stroke-width={format!("{:.5}%", 5.0 * (end - start).norm() / viewbox_size.norm())}
+                        stroke-width={format!("{:.5}%", 1.0 * (end - start).norm() / viewbox_size.norm())}
                     />
                 }
             }))
@@ -209,8 +209,8 @@ impl Component for BackgroundMap {
 
         html! {
         <>
-            <div id="container" style={style_string}>
-                //onclick={ctx.link().callback(|_| Self::Message::ZoomToggle )}>
+            <div id="container" style={style_string}
+                oncontextmenu={ctx.link().callback(|_| Self::Message::ZoomToggle )}>
                 <svg width="100%"
                      height="100%"
                      viewBox={viewbox_string}

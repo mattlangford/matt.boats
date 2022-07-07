@@ -59,12 +59,6 @@ const SEED: u64 = 42;
 
 impl Map {
     pub fn generate_random(width_m: f32, height_m: f32) -> Map {
-        return Map {
-            width_m: width_m,
-            height_m: height_m,
-            coordinates: Vec::new(),
-            ports: Vec::new(),
-        };
         let lon_lat = na::Matrix2xX::<f32>::from_vec(
             bincode::deserialize(MAP_DATA).expect("Unable to load raw map data."),
         );
