@@ -1,3 +1,5 @@
+#![allow(unused_macros)]
+
 // Dish out to gloo::console since it doesn't format the inputs.
 macro_rules! log {
     ($($arg:tt)+) => (

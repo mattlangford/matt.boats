@@ -11,7 +11,7 @@ pub struct Line {
     pub length: f32,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct AABox {
     pub start: Vec2f,
     pub dim: Vec2f,
@@ -69,6 +69,20 @@ impl AABox {
             Line::new_segment(corners[2], corners[3]),
             Line::new_segment(corners[3], corners[0]),
         ]
+    }
+
+    pub fn center(&self) -> Vec2f {
+        self.start + 0.5 * self.dim
+    }
+
+    pub fn split_mut(&mut self) -> AABox {
+        let mut new = self.clone();
+        let index = if self.dim[0] >= self.dim[1] { 0 } else { 1 };
+
+        self.dim[index] *= 0.5;
+        new.dim[index] *= 0.5;
+        new.start[index] += self.dim[index];
+        return new;
     }
 }
 

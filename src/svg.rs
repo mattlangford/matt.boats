@@ -55,6 +55,21 @@ impl RectProps {
             class: Some(String::from(class)),
         }
     }
+
+    pub fn from_aabox(b: &geom::AABox) -> RectProps {
+        RectProps {
+            x: b.start[0],
+            y: b.start[1],
+            width: b.dim[0],
+            height: b.dim[1],
+            class: None,
+        }
+    }
+
+    pub fn with_class(mut self, class: &str) -> RectProps {
+        self.class = Some(String::from(class));
+        self
+    }
 }
 
 #[function_component(Rect)]
