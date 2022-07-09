@@ -21,25 +21,6 @@ fn lon_lat_scale(lon_lat_ref: na::VectorSlice2<f32>) -> Vec2f {
     na::Vector2::<f32>::new(m_per_lon, m_per_lat)
 }
 
-pub fn generate_corners(width_m: f32, height_m: f32) -> [Vec2f; 4] {
-    [
-        Vec2f::new(0.5 * width_m, 0.5 * height_m),
-        Vec2f::new(0.5 * width_m, -0.5 * height_m),
-        Vec2f::new(-0.5 * width_m, -0.5 * height_m),
-        Vec2f::new(-0.5 * width_m, 0.5 * height_m),
-    ]
-}
-
-pub fn generate_edges(width_m: f32, height_m: f32) -> [Line; 4] {
-    let corners = generate_corners(width_m, height_m);
-    [
-        Line::new_segment(corners[0], corners[1]),
-        Line::new_segment(corners[1], corners[2]),
-        Line::new_segment(corners[2], corners[3]),
-        Line::new_segment(corners[3], corners[0]),
-    ]
-}
-
 fn generate_to_xy(center: na::VectorSlice2<f32>) -> impl Fn(na::VectorSlice2<f32>) -> Vec2f + '_ {
     let scale = lon_lat_scale(center);
     move |lon_lat: na::VectorSlice2<f32>| {
@@ -49,27 +30,24 @@ fn generate_to_xy(center: na::VectorSlice2<f32>) -> impl Fn(na::VectorSlice2<f32
 }
 
 pub struct Map {
-    pub width_m: f32,
-    pub height_m: f32,
     pub coordinates: Vec<Vec2f>,
     pub ports: Vec<Vec2f>,
 }
 
-const SEED: u64 = 42;
-
 impl Map {
-    pub fn generate_random(width_m: f32, height_m: f32) -> Map {
+    pub fn generate_random(viewbox: &AABox) -> Map {
         let lon_lat = na::Matrix2xX::<f32>::from_vec(
             bincode::deserialize(MAP_DATA).expect("Unable to load raw map data."),
         );
 
+        // const SEED: u64 = 42;
         //let mut rng = rand::rngs::StdRng::seed_from_u64(SEED);
         let mut rng = rand::thread_rng();
         let dist = rand::distributions::Uniform::from(0..lon_lat.ncols());
         let start_index = dist.sample(&mut rng);
         let lon_lat_ref = lon_lat.column(start_index).clone();
 
-        let corners = generate_corners(width_m, height_m);
+        let corners = viewbox.corners();
         let bounds = [
             Line::new_segment(corners[0], corners[1]),
             Line::new_segment(corners[1], corners[2]),
@@ -87,7 +65,6 @@ impl Map {
             .map(&to_xy)
             .peekable();
         let mut coordinates = vec![ref_xy];
-        let mut ports = Vec::<Vec2f>::new();
         let mut inside = true;
 
         while let Some(start) = iter.next() {
@@ -113,8 +90,6 @@ impl Map {
         let ports = coordinates.choose_multiple(&mut rng, 2).cloned().collect();
 
         Self {
-            width_m: width_m,
-            height_m: height_m,
             coordinates: coordinates,
             ports: ports,
         }

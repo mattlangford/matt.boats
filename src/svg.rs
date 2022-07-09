@@ -46,13 +46,13 @@ pub struct RectProps {
 }
 
 impl RectProps {
-    pub fn square_centered_at_with_class(x: f32, y: f32, dim: f32, class: &str) -> RectProps {
+    pub fn square(center: &geom::Vec2f, dim: f32) -> RectProps {
         RectProps {
-            x: x - 0.5 * dim,
-            y: y - 0.5 * dim,
+            x: center.x - 0.5 * dim,
+            y: center.y - 0.5 * dim,
             width: dim,
             height: dim,
-            class: Some(String::from(class)),
+            class: None,
         }
     }
 
