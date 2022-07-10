@@ -47,7 +47,7 @@ fn get_viewbox() -> Option<AABox> {
 
 struct Grid {
     boxes: Vec<AABox>,
-    neighbors: Vec<Vec<usize>>,
+    neighbors: Vec<Vec<(usize, f32)>>,
 }
 
 impl Grid {
@@ -58,33 +58,43 @@ impl Grid {
         }
     }
 
+    fn neighbors(&self, index: usize) -> impl Iterator<Item = &usize> {
+        self.neighbors[index].iter().map(|(i, _)| i)
+    }
+
     fn split(&mut self, old_index: usize) {
         let new_index = self.boxes.len();
         let new = self.boxes[old_index].split_mut();
         self.boxes.push(new);
 
-        let old_neighbors = self.neighbors[old_index].clone();
-        self.neighbors.push(Vec::with_capacity(old_neighbors.len()));
-        self.neighbors[old_index].clear();
-        for i in old_neighbors {
+        let distance_guess = |lhs: &AABox, rhs: &AABox| (lhs.center() - rhs.center()).norm();
+
+        let num_old_neighbors = self.neighbors[old_index].len();
+        let old_neighbors = self.neighbors[old_index].split_off(num_old_neighbors);
+        self.neighbors.push(Vec::with_capacity(num_old_neighbors));
+
+        for (i, _) in old_neighbors {
             if aabox_are_adjacent(&self.boxes[new_index], &self.boxes[i]) {
-                self.neighbors[i].push(new_index);
-                self.neighbors[new_index].push(i);
+                let dist = distance_guess(&self.boxes[new_index], &self.boxes[i]);
+                self.neighbors[i].push((new_index, dist));
+                self.neighbors[new_index].push((i, dist));
             }
 
             if aabox_are_adjacent(&self.boxes[old_index], &self.boxes[i]) {
-                self.neighbors[old_index].push(i);
+                let dist = distance_guess(&self.boxes[old_index], &self.boxes[i]);
+                self.neighbors[old_index].push((i, dist));
             } else {
                 let index = self.neighbors[i]
                     .iter()
-                    .position(|&j| j == old_index)
+                    .position(|&(j, _)| j == old_index)
                     .unwrap();
                 self.neighbors[i].swap_remove(index);
             }
         }
 
-        self.neighbors[old_index].push(new_index);
-        self.neighbors[new_index].push(old_index);
+        let dist = distance_guess(&self.boxes[new_index], &self.boxes[old_index]);
+        self.neighbors[old_index].push((new_index, dist));
+        self.neighbors[new_index].push((old_index, dist));
     }
 
     fn render(&self) -> Html {
@@ -95,14 +105,34 @@ impl Grid {
     }
 }
 
+enum StepResult {
+    Step(Vec2f),
+    Failure(String),
+    Success,
+    Split,
+}
+
+fn step_search(
+    current: Vec2f,
+    goal: Vec2f,
+    valid: impl Fn(&Line) -> bool,
+    grid: &mut Grid,
+) -> StepResult {
+    StepResult::Failure("TODO".into())
+}
+
 struct App {
     grid: Grid,
     map: Map,
     zoom: bool,
+
+    position: Vec2f,
+    goal: Vec2f,
 }
 
 enum Msg {
     ZoomToggle,
+    Step,
 }
 
 impl Component for App {
@@ -112,10 +142,15 @@ impl Component for App {
     fn create(_ctx: &Context<Self>) -> Self {
         let viewbox = get_viewbox().expect("Unable to get viewBox.");
         let map = Map::generate_random(&viewbox);
-        let mut grid = Grid::new(viewbox);
-        grid.split(0);
-        grid.split(1);
-        grid.split(0);
+
+        let edges = viewbox.edges();
+        let start = edges
+            .iter()
+            .flat_map(|l| generate_points_on_line(10, l))
+            .filter(|pt| !point_in_polygon(&pt, &map.coordinates))
+            .next()
+            .unwrap_or(map.ports[1]);
+        let goal = map.ports[0];
 
         log!(
             "Loaded {} coordinates and {} ports",
@@ -124,8 +159,11 @@ impl Component for App {
         );
         Self {
             map: map,
-            grid: grid,
+            grid: Grid::new(viewbox),
             zoom: true,
+
+            position: start,
+            goal: goal,
         }
     }
 
@@ -134,6 +172,18 @@ impl Component for App {
             Self::Message::ZoomToggle => {
                 self.zoom = !self.zoom;
                 true
+            }
+            Self::Message::Step => {
+                let valid = |line: &Line| {
+                    self.map
+                        .coordinates
+                        .iter()
+                        .zip(ring_iter(self.map.coordinates.iter(), 1))
+                        .all(|(start, end)| intersect_segment(line, &start, &end).is_none())
+                };
+                match step_search(self.position, self.goal, valid, &mut self.grid) {
+                    _ => false,
+                }
             }
         }
     }
@@ -160,13 +210,10 @@ impl Component for App {
             .map(|pt| format!("{:.3},{:.3} ", pt[0], pt[1]))
             .collect::<String>();
 
-        let edges = viewbox.edges();
-        let edge_points = edges.iter().flat_map(|l| generate_points_on_line(10, l));
-
         html! {
         <>
             <div id="container" style={style_string}
-                onclick={ctx.link().callback(|_| Self::Message::ZoomToggle )}>
+                onclick={ctx.link().callback(|_| Self::Message::Step )}>
                 <svg width="100%" height="100%" viewBox={viewbox_string} preserveAspectRatio="none" class="svgstyle">
                     <polyline class="land" points={point_str}/>
 
@@ -174,11 +221,6 @@ impl Component for App {
                     for self.map.ports.iter()
                         .map(|pt| svg::RectProps::square(pt, 500.0 * scale).with_class("port"))
                         .map(|props| html! { <svg::Rect ..props/> })
-                    }
-
-                    {
-                    for edge_points.filter(|pt| !point_in_polygon(&pt, &self.map.coordinates)).map(|pt|
-                        html!{ <circle cx={f(pt[0])} cy={f(pt[1])} r="0.5%" fill="yellow"/> })
                     }
 
                     <svg::Rect ..svg::RectProps::from_aabox(&viewbox).with_class("outline")/>
