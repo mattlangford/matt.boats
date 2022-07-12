@@ -50,6 +50,12 @@ struct Grid {
     neighbors: Vec<Vec<(usize, f32)>>,
 }
 
+struct CellRef<'a> {
+    index: usize,
+    cell: &'a AABox,
+    neighbors: &'a Vec<(usize, f32)>,
+}
+
 impl Grid {
     fn new(viewbox: AABox) -> Self {
         Self {
@@ -58,8 +64,28 @@ impl Grid {
         }
     }
 
-    fn neighbors(&self, index: usize) -> impl Iterator<Item = &usize> {
-        self.neighbors[index].iter().map(|(i, _)| i)
+    fn make_cell(&self, index: usize) -> CellRef {
+        CellRef {
+            index: index,
+            cell: &self.boxes[index],
+            neighbors: &self.neighbors[index],
+        }
+    }
+
+    //fn query(&self, point: &Vec2f) -> Option<CellRef> {
+    //    self.boxes.iter().enumerate().filter(|(_, b)| point_in_aabox(&point, b)).map(|(i, _)| self.make_cell(i)).next()
+    //}
+    fn query(&self, point: &Vec2f) -> Option<usize> {
+        self.boxes
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| point_in_aabox(&point, b))
+            .map(|(i, _)| i)
+            .next()
+    }
+
+    fn neighbors<'a>(&'a self, cell: &'a CellRef) -> impl Iterator<Item = (f32, CellRef<'a>)> {
+        cell.neighbors.iter().map(|&(i, s)| (s, self.make_cell(i)))
     }
 
     fn split(&mut self, old_index: usize) {
@@ -105,6 +131,7 @@ impl Grid {
     }
 }
 
+#[derive(Debug)]
 enum StepResult {
     Step(Vec2f),
     Failure(String),
@@ -112,12 +139,39 @@ enum StepResult {
     Split,
 }
 
+// TODO: Split should return error if splitting too much, need to check if points are inside polygon or not
+
 fn step_search(
     current: Vec2f,
     goal: Vec2f,
-    valid: impl Fn(&Line) -> bool,
+    valid: impl Fn(Line) -> bool,
     grid: &mut Grid,
 ) -> StepResult {
+    let maybe_current_cell = grid.query(&current);
+    if maybe_current_cell.is_none() {
+        return StepResult::Failure("Unable to find current cell.".into());
+    }
+    let current_cell = maybe_current_cell.unwrap();
+
+    if !valid(Line::new_segment(
+        current,
+        grid.boxes[current_cell].center(),
+    )) {
+        grid.split(current_cell);
+        return StepResult::Split;
+    }
+
+    let maybe_goal_cell = grid.query(&goal);
+    if maybe_goal_cell.is_none() {
+        return StepResult::Failure("Unable to find goal cell.".into());
+    }
+    let goal_cell = maybe_goal_cell.unwrap();
+
+    if !valid(Line::new_segment(grid.boxes[goal_cell].center(), goal)) {
+        grid.split(goal_cell);
+        return StepResult::Split;
+    }
+
     StepResult::Failure("TODO".into())
 }
 
@@ -174,16 +228,18 @@ impl Component for App {
                 true
             }
             Self::Message::Step => {
-                let valid = |line: &Line| {
+                let valid = |line: Line| {
                     self.map
                         .coordinates
                         .iter()
                         .zip(ring_iter(self.map.coordinates.iter(), 1))
-                        .all(|(start, end)| intersect_segment(line, &start, &end).is_none())
+                        .all(|(start, end)| intersect_segment(&line, &start, &end).is_none())
                 };
-                match step_search(self.position, self.goal, valid, &mut self.grid) {
-                    _ => false,
-                }
+                log!(
+                    "Step_search result: {:?}",
+                    step_search(self.position, self.goal, valid, &mut self.grid)
+                );
+                true
             }
         }
     }
