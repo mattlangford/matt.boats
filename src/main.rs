@@ -64,17 +64,6 @@ impl Grid {
         }
     }
 
-    fn make_cell(&self, index: usize) -> CellRef {
-        CellRef {
-            index: index,
-            cell: &self.boxes[index],
-            neighbors: &self.neighbors[index],
-        }
-    }
-
-    //fn query(&self, point: &Vec2f) -> Option<CellRef> {
-    //    self.boxes.iter().enumerate().filter(|(_, b)| point_in_aabox(&point, b)).map(|(i, _)| self.make_cell(i)).next()
-    //}
     fn query(&self, point: &Vec2f) -> Option<usize> {
         self.boxes
             .iter()
@@ -82,10 +71,6 @@ impl Grid {
             .filter(|(_, b)| point_in_aabox(&point, b))
             .map(|(i, _)| i)
             .next()
-    }
-
-    fn neighbors<'a>(&'a self, cell: &'a CellRef) -> impl Iterator<Item = (f32, CellRef<'a>)> {
-        cell.neighbors.iter().map(|&(i, s)| (s, self.make_cell(i)))
     }
 
     fn split(&mut self, old_index: usize) {
@@ -139,40 +124,42 @@ enum StepResult {
     Split,
 }
 
-// TODO: Split should return error if splitting too much, need to check if points are inside polygon or not
+fn step_search(current: Vec2f, goal: Vec2f, map: &[Vec2f], grid: &mut Grid) -> StepResult {
+    if !intersect_polygon(&Line::new_segment(current, goal), map) {
+        return StepResult::Success;
+    }
 
-fn step_search(
-    current: Vec2f,
-    goal: Vec2f,
-    valid: impl Fn(Line) -> bool,
-    grid: &mut Grid,
-) -> StepResult {
     let maybe_current_cell = grid.query(&current);
     if maybe_current_cell.is_none() {
         return StepResult::Failure("Unable to find current cell.".into());
     }
     let current_cell = maybe_current_cell.unwrap();
 
-    if !valid(Line::new_segment(
-        current,
-        grid.boxes[current_cell].center(),
-    )) {
-        grid.split(current_cell);
-        return StepResult::Split;
+    // Sort so that the cell closest to the goal is first.
+    grid.neighbors[current_cell].sort_by_key(|&(_, s)| {
+        if s.is_finite() {
+            (s * 1E5) as u64
+        } else {
+            std::u64::MAX
+        }
+    });
+
+    for (next_cell, score) in &mut grid.neighbors[current_cell] {
+        let next_center = grid.boxes[*next_cell].center();
+
+        // Make sure the point is reachable.
+        if !point_in_polygon(&next_center, &map)
+            && !intersect_polygon(&Line::new_segment(current, next_center), map)
+        {
+            return StepResult::Step(next_center);
+        }
+
+        *score = f32::INFINITY;
     }
 
-    let maybe_goal_cell = grid.query(&goal);
-    if maybe_goal_cell.is_none() {
-        return StepResult::Failure("Unable to find goal cell.".into());
-    }
-    let goal_cell = maybe_goal_cell.unwrap();
+    // No valid paths found, let the splitting begin!
 
-    if !valid(Line::new_segment(grid.boxes[goal_cell].center(), goal)) {
-        grid.split(goal_cell);
-        return StepResult::Split;
-    }
-
-    StepResult::Failure("TODO".into())
+    return StepResult::Failure("TODO".into());
 }
 
 struct App {
@@ -228,16 +215,14 @@ impl Component for App {
                 true
             }
             Self::Message::Step => {
-                let valid = |line: Line| {
-                    self.map
-                        .coordinates
-                        .iter()
-                        .zip(ring_iter(self.map.coordinates.iter(), 1))
-                        .all(|(start, end)| intersect_segment(&line, &start, &end).is_none())
-                };
                 log!(
                     "Step_search result: {:?}",
-                    step_search(self.position, self.goal, valid, &mut self.grid)
+                    step_search(
+                        self.position,
+                        self.goal,
+                        &self.map.coordinates,
+                        &mut self.grid
+                    )
                 );
                 true
             }

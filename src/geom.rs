@@ -149,6 +149,12 @@ pub fn point_in_polygon(pt: &Vec2f, poly: &[Vec2f]) -> bool {
     hits % 2 == 1
 }
 
+pub fn intersect_polygon(line: &Line, poly: &[Vec2f]) -> bool {
+    poly.iter()
+        .zip(ring_iter(poly.iter(), 1))
+        .all(|(start, end)| intersect_segment(&line, &start, &end).is_none())
+}
+
 pub fn point_in_aabox(pt: &Vec2f, b: &AABox) -> bool {
     let end = b.start + b.dim;
     pt[0] >= b.start[0] && pt[0] < end[0] && pt[1] >= b.start[1] && pt[1] < end[1]
