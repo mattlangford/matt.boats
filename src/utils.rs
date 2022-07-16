@@ -36,3 +36,15 @@ pub fn minmax<T: std::cmp::PartialOrd>(lhs: T, rhs: T) -> (T, T) {
         (rhs, lhs)
     }
 }
+
+pub fn maybe_min<T: std::cmp::PartialOrd>(lhs: T, rhs: T) -> bool {
+    lhs < rhs
+}
+
+pub fn min_in_place<T: std::cmp::PartialOrd>(lhs: &mut T, rhs: T) -> bool {
+    if *lhs >= rhs {
+        *lhs = rhs;
+        return true;
+    }
+    false
+}

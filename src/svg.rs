@@ -2,19 +2,10 @@ use yew::function_component;
 use yew::prelude::*;
 
 use crate::geom;
+use crate::utils::*;
 
 fn s<T: std::fmt::Display>(v: T) -> String {
     format!("{:.5}", v)
-}
-
-#[derive(PartialEq, Properties, Default)]
-pub struct Style {
-    #[prop_or(String::from("black"))]
-    pub stroke: String,
-    #[prop_or(String::from("0.1%"))]
-    pub stroke_width: String,
-    #[prop_or(String::from("black"))]
-    pub fill: String,
 }
 
 #[derive(PartialEq, Properties)]
@@ -25,6 +16,25 @@ pub struct LineProps {
     pub y2: f32,
     #[prop_or_default]
     pub class: Option<String>,
+}
+
+impl LineProps {
+    pub fn from_line(line: &geom::Line) -> Self {
+        let start = line.start();
+        let end = line.end();
+        Self {
+            x1: start[0],
+            y1: start[1],
+            x2: end[0],
+            y2: end[1],
+            class: None,
+        }
+    }
+
+    pub fn with_class(mut self, class: &str) -> Self {
+        self.class = Some(String::from(class));
+        self
+    }
 }
 
 #[function_component(Line)]

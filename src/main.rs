@@ -17,6 +17,8 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 use rand::SeedableRng;
 
+use std::collections::HashMap;
+
 const HEIGHT: f32 = 50000.0;
 
 fn f<T: std::fmt::Display>(v: T) -> String {
@@ -45,15 +47,44 @@ fn get_viewbox() -> Option<AABox> {
     })
 }
 
-struct Grid {
-    boxes: Vec<AABox>,
-    neighbors: Vec<Vec<(usize, f32)>>,
+#[derive(Debug, Default)]
+struct GraphNode {
+    point: Vec2f,
+    score: f64,
+    edges: Vec<usize>,
 }
 
-struct CellRef<'a> {
-    index: usize,
-    cell: &'a AABox,
-    neighbors: &'a Vec<(usize, f32)>,
+#[derive(Debug, Default)]
+struct Graph {
+    graph: Vec<GraphNode>,
+}
+
+impl Graph {
+    fn set(&mut self, index: usize, score: f64) {
+        if min_in_place(&mut self.graph[index].score, score) {
+            for neighbor in self.graph[index].edges.clone() {
+                let cost = (self.graph[index].point - self.graph[neighbor].point).norm();
+                self.set(neighbor, score + cost as f64);
+            }
+        }
+    }
+
+    fn get(&self, index: usize) -> Vec<usize> {
+        let mut edges = self.graph[index].edges.clone();
+        edges.sort_by(|a, b| {
+            self.graph[*a]
+                .score
+                .partial_cmp(self.graph[*b].score)
+                .expect("Tried to compare a NaN")
+        });
+        edges
+    }
+}
+
+#[derive(Debug, Default)]
+struct Grid {
+    boxes: Vec<AABox>,
+    neighbors: Vec<Vec<(usize, bool)>>,
 }
 
 impl Grid {
@@ -64,13 +95,45 @@ impl Grid {
         }
     }
 
-    fn query(&self, point: &Vec2f) -> Option<usize> {
+    fn new_subdivided(viewbox: AABox, divides: usize) -> Self {
+        let mut grid = Grid::new(viewbox);
+        for div in 0..divides {
+            let count = grid.boxes.len();
+            for i in 0..count {
+                grid.split(i);
+            }
+        }
+        log!("Grid: {:?}", grid);
+        grid
+    }
+
+    fn into_graph(&self) -> Graph {
+        Graph {
+            graph: self
+                .boxes
+                .iter()
+                .zip(self.neighbors.iter())
+                .map(|(b, ns)| GraphNode {
+                    point: b.center(),
+                    score: f64::INFINITY,
+                    edges: ns
+                        .iter()
+                        .filter(|(i, valid)| *valid)
+                        .map(|(i, _)| *i)
+                        .collect(),
+                })
+                .collect(),
+        }
+    }
+
+    fn query(&self, point: &Vec2f) -> Result<usize, String> {
         self.boxes
             .iter()
             .enumerate()
             .filter(|(_, b)| point_in_aabox(&point, b))
             .map(|(i, _)| i)
             .next()
+            .ok_or(format!("Unable to find point ({}) in grid.", point))
     }
 
     fn split(&mut self, old_index: usize) {
@@ -78,34 +141,29 @@ impl Grid {
         let new = self.boxes[old_index].split_mut();
         self.boxes.push(new);
 
-        let distance_guess = |lhs: &AABox, rhs: &AABox| (lhs.center() - rhs.center()).norm();
-
         let num_old_neighbors = self.neighbors[old_index].len();
         let old_neighbors = self.neighbors[old_index].split_off(num_old_neighbors);
         self.neighbors.push(Vec::with_capacity(num_old_neighbors));
 
         for (i, _) in old_neighbors {
             if aabox_are_adjacent(&self.boxes[new_index], &self.boxes[i]) {
-                let dist = distance_guess(&self.boxes[new_index], &self.boxes[i]);
-                self.neighbors[i].push((new_index, dist));
-                self.neighbors[new_index].push((i, dist));
+                self.neighbors[i].push((new_index, true));
+                self.neighbors[new_index].push((i, true));
             }
 
             if aabox_are_adjacent(&self.boxes[old_index], &self.boxes[i]) {
-                let dist = distance_guess(&self.boxes[old_index], &self.boxes[i]);
-                self.neighbors[old_index].push((i, dist));
+                self.neighbors[old_index].push((i, true));
             } else {
                 let index = self.neighbors[i]
                     .iter()
-                    .position(|&(j, _)| j == old_index)
+                    .position(|(j, _)| *j == old_index)
                     .unwrap();
                 self.neighbors[i].swap_remove(index);
             }
         }
 
-        let dist = distance_guess(&self.boxes[new_index], &self.boxes[old_index]);
-        self.neighbors[old_index].push((new_index, dist));
-        self.neighbors[new_index].push((old_index, dist));
+        self.neighbors[old_index].push((new_index, true));
+        self.neighbors[new_index].push((old_index, true));
     }
 
     fn render(&self) -> Html {
@@ -119,47 +177,54 @@ impl Grid {
 #[derive(Debug)]
 enum StepResult {
     Step(Vec2f),
-    Failure(String),
     Success,
     Split,
 }
 
-fn step_search(current: Vec2f, goal: Vec2f, map: &[Vec2f], grid: &mut Grid) -> StepResult {
+fn step_search(
+    current: Vec2f,
+    goal: Vec2f,
+    map: &[Vec2f],
+    grid: &mut Grid,
+) -> Result<StepResult, String> {
     if !intersect_polygon(&Line::new_segment(current, goal), map) {
-        return StepResult::Success;
+        return Ok(StepResult::Success);
     }
 
-    let maybe_current_cell = grid.query(&current);
-    if maybe_current_cell.is_none() {
-        return StepResult::Failure("Unable to find current cell.".into());
-    }
-    let current_cell = maybe_current_cell.unwrap();
+    let mut graph = grid.into_graph();
 
-    // Sort so that the cell closest to the goal is first.
-    grid.neighbors[current_cell].sort_by_key(|&(_, s)| {
-        if s.is_finite() {
-            (s * 1E5) as u64
-        } else {
-            std::u64::MAX
+    // Populate goal
+    let goal_i = grid.query(&goal)?;
+    graph.set(goal_i, 0.0);
+
+    log!("Step search graph:");
+    for (i, node) in graph.graph.iter().enumerate() {
+        log!("{} : {:?}", i, node);
+    }
+
+    let current_i = grid.query(&current)?;
+    let mut count = 0;
+    for to_i in graph.get(current_i) {
+        log!("From {} to {}", current_i, to_i);
+        let to_point = grid.boxes[to_i].center();
+        if !intersect_polygon(&Line::new_segment(current, to_point), map) {
+            return Ok(StepResult::Step(to_point));
         }
-    });
-
-    for (next_cell, score) in &mut grid.neighbors[current_cell] {
-        let next_center = grid.boxes[*next_cell].center();
-
-        // Make sure the point is reachable.
-        if !point_in_polygon(&next_center, &map)
-            && !intersect_polygon(&Line::new_segment(current, next_center), map)
-        {
-            return StepResult::Step(next_center);
+        for (n, valid) in &mut grid.neighbors[current_i] {
+            if *n == to_i {
+                *valid = false;
+            }
         }
 
-        *score = f32::INFINITY;
+        count += 1;
+        if count > 10 {
+            return Err(String::from("MaxIterations reached"));
+        }
     }
 
-    // No valid paths found, let the splitting begin!
+    // Subdivide...
 
-    return StepResult::Failure("TODO".into());
+    return Err(String::from("TODO"));
 }
 
 struct App {
@@ -169,6 +234,7 @@ struct App {
 
     position: Vec2f,
     goal: Vec2f,
+    history: Vec<Vec2f>,
 }
 
 enum Msg {
@@ -188,6 +254,7 @@ impl Component for App {
         let start = edges
             .iter()
             .flat_map(|l| generate_points_on_line(10, l))
+            .map(|pt| 0.98 * pt)
             .filter(|pt| !point_in_polygon(&pt, &map.coordinates))
             .next()
             .unwrap_or(map.ports[1]);
@@ -200,11 +267,12 @@ impl Component for App {
         );
         Self {
             map: map,
-            grid: Grid::new(viewbox),
+            grid: Grid::new_subdivided(viewbox, 4),
             zoom: true,
 
             position: start,
             goal: goal,
+            history: vec![start],
         }
     }
 
@@ -215,15 +283,28 @@ impl Component for App {
                 true
             }
             Self::Message::Step => {
-                log!(
-                    "Step_search result: {:?}",
-                    step_search(
-                        self.position,
-                        self.goal,
-                        &self.map.coordinates,
-                        &mut self.grid
-                    )
+                let result = step_search(
+                    self.position,
+                    self.goal,
+                    &self.map.coordinates,
+                    &mut self.grid,
                 );
+                log!("Step_search result: {:?}", result);
+
+                match result {
+                    Err(s) => {
+                        log!("Error from step_search: {}", s);
+                    }
+                    Ok(StepResult::Step(p)) => {
+                        self.position = p;
+                        self.history.push(self.position);
+                    }
+                    Ok(StepResult::Success) => {
+                        self.position = self.goal;
+                        self.history.push(self.position);
+                    }
+                    Ok(StepResult::Split) => {}
+                }
                 true
             }
         }
@@ -231,7 +312,7 @@ impl Component for App {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let window_size = get_window_size().expect("Unable to get window size.");
-        let scale: f32 = if self.zoom { 1.0 } else { 1.2 };
+        let scale: f32 = if self.zoom { 1.1 } else { 1.2 };
         let viewbox = get_viewbox().unwrap();
 
         let style_string = format!("width:{}px;height:{}px", window_size[0], window_size[1]);
@@ -265,6 +346,13 @@ impl Component for App {
                     }
 
                     <svg::Rect ..svg::RectProps::from_aabox(&viewbox).with_class("outline")/>
+                    <svg::Rect ..svg::RectProps::square(&self.position, 400.0 * scale).with_class("position")/>
+                    <svg::Rect ..svg::RectProps::square(&self.goal, 400.0 * scale).with_class("goal")/>
+                    {
+                        for self.history.windows(2)
+                            .map(|s| svg::LineProps::from_line(&Line::new_segment(s[0], s[1])).with_class("path"))
+                            .map(|props| html! { <svg::Line ..props/> })
+                    }
 
                     {self.grid.render()}
                 </svg>

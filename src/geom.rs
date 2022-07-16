@@ -35,6 +35,14 @@ impl Line {
             length: length,
         }
     }
+
+    pub fn start(&self) -> Vec2f {
+        self.start
+    }
+
+    pub fn end(&self) -> Vec2f {
+        self.start + self.length.min(1E10) * self.direction
+    }
 }
 
 impl AABox {
@@ -152,7 +160,7 @@ pub fn point_in_polygon(pt: &Vec2f, poly: &[Vec2f]) -> bool {
 pub fn intersect_polygon(line: &Line, poly: &[Vec2f]) -> bool {
     poly.iter()
         .zip(ring_iter(poly.iter(), 1))
-        .all(|(start, end)| intersect_segment(&line, &start, &end).is_none())
+        .any(|(start, end)| intersect_segment(&line, &start, &end).is_some())
 }
 
 pub fn point_in_aabox(pt: &Vec2f, b: &AABox) -> bool {
