@@ -88,13 +88,6 @@ impl Graph {
             .iter()
             .map(|&n| self.graph[n].score)
             .collect::<Vec<_>>();
-        log!(
-            "get() score {} raw edges: {:?} (scores: {:?}) filtered: {:?}",
-            score,
-            self.graph[index].edges,
-            scores,
-            edges
-        );
         edges
     }
 }
@@ -227,32 +220,16 @@ fn step_search(
     let goal_i = grid.query(&goal)?;
     graph.set(goal_i, 0.0);
 
-    log!("Step search graph:");
-    for (i, node) in graph.graph.iter().enumerate() {
-        log!("{} : {:?}", i, node);
-    }
-
     let current_i = grid.query(&current)?;
-    log!("Current cell: {} goal cell: {}", current_i, goal_i);
 
     if graph.graph[current_i].score.is_infinite() {
         let mut to_split = HashSet::<usize>::new();
         for (i, g) in graph.graph.iter().enumerate() {
-            log!("{} Score: {}, n: {:?}", i, g.score, grid.neighbors[i]);
             // G is a losing cell.
             if g.score.is_finite() {
                 continue;
             }
-            // G has non losing neighbors
-            if grid.neighbors[i]
-                .iter()
-                .map(|(i, _)| graph.graph[*i].score)
-                .all(|s| s.is_infinite())
-            {
-                continue;
-            }
 
-            log!("Should split node: {}", i);
             to_split.insert(i);
             for (n, v) in &grid.neighbors[i] {
                 if graph.graph[*n].score.is_infinite() {
@@ -261,8 +238,6 @@ fn step_search(
                 to_split.insert(*n);
             }
         }
-
-        log!("To split: {:?}", to_split);
 
         for i in to_split {
             grid.split(i);
@@ -273,22 +248,16 @@ fn step_search(
 
     let mut count = 0;
     for to_i in graph.get(current_i) {
-        log!("From {} to {}", current_i, to_i);
         let to_point = grid.boxes[to_i].center();
         if !intersect_polygon(&Line::new_segment(current, to_point), map) {
             return Ok(StepResult::Step(to_point));
         }
 
-        log!("Neighbors: {:?}", grid.neighbors[current_i]);
-        for (n, valid) in &mut grid.neighbors[current_i] {
-            if *n == to_i {
-                *valid = false;
-            }
+        for (_, valid) in &mut grid.neighbors[current_i].iter_mut().filter(|(n, _)| *n == to_i) {
+            *valid = false;
         }
-        for (n, valid) in &mut grid.neighbors[to_i] {
-            if *n == current_i {
-                *valid = false;
-            }
+        for (n, valid) in &mut grid.neighbors[to_i].iter_mut().filter(|(n, _)| *n == current_i) {
+            *valid = false;
         }
 
         count += 1;
@@ -298,7 +267,6 @@ fn step_search(
     }
 
     if count == 0 {
-        log!("{} has no neighbors. Splitting.", current_i);
         grid.split(current_i);
     }
     return Ok(StepResult::Split);
@@ -392,9 +360,7 @@ impl Component for App {
                             self.solution.push(self.position);
                             loop {
                                 let pos = self.solution.last().unwrap();
-                                log!("Position: {}", pos);
                                 for (i, h) in self.history.iter().enumerate() {
-                                    log!("testing i: {} h: {}", i, h);
                                     if !intersect_polygon(
                                         &Line::new_segment(*h, *pos),
                                         &self.map.coordinates,
