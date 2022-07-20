@@ -4,7 +4,7 @@ use yew::prelude::*;
 use crate::geom;
 use crate::utils::*;
 
-fn s<T: std::fmt::Display>(v: T) -> String {
+pub fn s<T: std::fmt::Display>(v: T) -> String {
     format!("{:.5}", v)
 }
 

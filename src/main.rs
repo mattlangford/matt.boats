@@ -17,7 +17,7 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 use rand::SeedableRng;
 
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 const HEIGHT: f32 = 50000.0;
 
@@ -70,13 +70,31 @@ impl Graph {
     }
 
     fn get(&self, index: usize) -> Vec<usize> {
-        let mut edges = self.graph[index].edges.clone();
+        let score = self.graph[index].score;
+        let mut edges = self.graph[index]
+            .edges
+            .iter()
+            .filter(|&n| self.graph[*n].score < score)
+            .copied()
+            .collect::<Vec<_>>();
         edges.sort_by(|a, b| {
             self.graph[*a]
                 .score
-                .partial_cmp(self.graph[*b].score)
+                .partial_cmp(&self.graph[*b].score)
                 .expect("Tried to compare a NaN")
         });
+        let scores = self.graph[index]
+            .edges
+            .iter()
+            .map(|&n| self.graph[n].score)
+            .collect::<Vec<_>>();
+        log!(
+            "get() score {} raw edges: {:?} (scores: {:?}) filtered: {:?}",
+            score,
+            self.graph[index].edges,
+            scores,
+            edges
+        );
         edges
     }
 }
@@ -103,7 +121,6 @@ impl Grid {
                 grid.split(i);
             }
         }
-        log!("Grid: {:?}", grid);
         grid
     }
 
@@ -141,9 +158,9 @@ impl Grid {
         let new = self.boxes[old_index].split_mut();
         self.boxes.push(new);
 
-        let num_old_neighbors = self.neighbors[old_index].len();
-        let old_neighbors = self.neighbors[old_index].split_off(num_old_neighbors);
-        self.neighbors.push(Vec::with_capacity(num_old_neighbors));
+        let old_neighbors = self.neighbors[old_index].clone();
+        self.neighbors[old_index].clear();
+        self.neighbors.push(Vec::with_capacity(old_neighbors.len()));
 
         for (i, _) in old_neighbors {
             if aabox_are_adjacent(&self.boxes[new_index], &self.boxes[i]) {
@@ -168,8 +185,21 @@ impl Grid {
 
     fn render(&self) -> Html {
         html! {
-            for self.boxes.iter().map(|b|
-                html!{ <svg::Rect ..svg::RectProps::from_aabox(b).with_class("gridline")/> })
+            for self.boxes.iter().enumerate().map(|(i, b)| {
+                let center = b.center();
+                html!{
+                    <>
+                        <svg::Rect ..svg::RectProps::from_aabox(b).with_class("gridline")/>
+                        <text x={svg::s(center[0])} y={svg::s(center[1])} class="heavy" transform="scale(1,1)">{i}</text>
+                        {
+                        for self.neighbors[i].iter()
+                            .filter(|n| n.1)
+                            .map(|n| Line::new_segment(center, self.boxes[n.0].center()))
+                            .map(|l| html! { <svg::Line ..svg::LineProps::from_line(&l).with_class("gridline-thin")/> } )
+                        }
+                    </>
+                }
+            })
         }
     }
 }
@@ -203,6 +233,44 @@ fn step_search(
     }
 
     let current_i = grid.query(&current)?;
+    log!("Current cell: {} goal cell: {}", current_i, goal_i);
+
+    if graph.graph[current_i].score.is_infinite() {
+        let mut to_split = HashSet::<usize>::new();
+        for (i, g) in graph.graph.iter().enumerate() {
+            log!("{} Score: {}, n: {:?}", i, g.score, grid.neighbors[i]);
+            // G is a losing cell.
+            if g.score.is_finite() {
+                continue;
+            }
+            // G has non losing neighbors
+            if grid.neighbors[i]
+                .iter()
+                .map(|(i, _)| graph.graph[*i].score)
+                .all(|s| s.is_infinite())
+            {
+                continue;
+            }
+
+            log!("Should split node: {}", i);
+            to_split.insert(i);
+            for (n, v) in &grid.neighbors[i] {
+                if graph.graph[*n].score.is_infinite() {
+                    continue;
+                }
+                to_split.insert(*n);
+            }
+        }
+
+        log!("To split: {:?}", to_split);
+
+        for i in to_split {
+            grid.split(i);
+        }
+
+        return Ok(StepResult::Split);
+    }
+
     let mut count = 0;
     for to_i in graph.get(current_i) {
         log!("From {} to {}", current_i, to_i);
@@ -210,8 +278,15 @@ fn step_search(
         if !intersect_polygon(&Line::new_segment(current, to_point), map) {
             return Ok(StepResult::Step(to_point));
         }
+
+        log!("Neighbors: {:?}", grid.neighbors[current_i]);
         for (n, valid) in &mut grid.neighbors[current_i] {
             if *n == to_i {
+                *valid = false;
+            }
+        }
+        for (n, valid) in &mut grid.neighbors[to_i] {
+            if *n == current_i {
                 *valid = false;
             }
         }
@@ -222,9 +297,11 @@ fn step_search(
         }
     }
 
-    // Subdivide...
-
-    return Err(String::from("TODO"));
+    if count == 0 {
+        log!("{} has no neighbors. Splitting.", current_i);
+        grid.split(current_i);
+    }
+    return Ok(StepResult::Split);
 }
 
 struct App {
@@ -235,6 +312,8 @@ struct App {
     position: Vec2f,
     goal: Vec2f,
     history: Vec<Vec2f>,
+
+    solution: Vec<Vec2f>,
 }
 
 enum Msg {
@@ -267,12 +346,14 @@ impl Component for App {
         );
         Self {
             map: map,
-            grid: Grid::new_subdivided(viewbox, 4),
+            grid: Grid::new_subdivided(viewbox, 1),
             zoom: true,
 
             position: start,
             goal: goal,
             history: vec![start],
+
+            solution: vec![],
         }
     }
 
@@ -283,27 +364,56 @@ impl Component for App {
                 true
             }
             Self::Message::Step => {
-                let result = step_search(
-                    self.position,
-                    self.goal,
-                    &self.map.coordinates,
-                    &mut self.grid,
-                );
-                log!("Step_search result: {:?}", result);
+                loop {
+                    if self.position == self.goal {
+                        break;
+                    }
 
-                match result {
-                    Err(s) => {
-                        log!("Error from step_search: {}", s);
+                    let result = step_search(
+                        self.position,
+                        self.goal,
+                        &self.map.coordinates,
+                        &mut self.grid,
+                    );
+                    log!("step_search result: {:?}", result);
+
+                    match result {
+                        Err(s) => {
+                            log!("Error from step_search: {}", s);
+                        }
+                        Ok(StepResult::Step(p)) => {
+                            self.position = p;
+                            self.history.push(self.position);
+                        }
+                        Ok(StepResult::Success) => {
+                            self.position = self.goal;
+                            self.history.push(self.position);
+
+                            self.solution.push(self.position);
+                            loop {
+                                let pos = self.solution.last().unwrap();
+                                log!("Position: {}", pos);
+                                for (i, h) in self.history.iter().enumerate() {
+                                    log!("testing i: {} h: {}", i, h);
+                                    if !intersect_polygon(
+                                        &Line::new_segment(*h, *pos),
+                                        &self.map.coordinates,
+                                    ) {
+                                        self.solution.push(*h);
+                                        if i == 0 {
+                                            return true;
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        Ok(StepResult::Split) => {}
                     }
-                    Ok(StepResult::Step(p)) => {
-                        self.position = p;
-                        self.history.push(self.position);
+
+                    if self.grid.boxes.iter().any(|b| b.area() < 10.0) {
+                        break;
                     }
-                    Ok(StepResult::Success) => {
-                        self.position = self.goal;
-                        self.history.push(self.position);
-                    }
-                    Ok(StepResult::Split) => {}
                 }
                 true
             }
@@ -353,6 +463,11 @@ impl Component for App {
                             .map(|s| svg::LineProps::from_line(&Line::new_segment(s[0], s[1])).with_class("path"))
                             .map(|props| html! { <svg::Line ..props/> })
                     }
+                    {
+                        for self.solution.windows(2)
+                            .map(|s| svg::LineProps::from_line(&Line::new_segment(s[0], s[1])).with_class("solution"))
+                            .map(|props| html! { <svg::Line ..props/> })
+                    }
 
                     {self.grid.render()}
                 </svg>
@@ -364,6 +479,5 @@ impl Component for App {
 
 fn main() {
     log!("Starting model...");
-    //log!("{:?}", get_window_size());
     yew::start_app::<App>();
 }

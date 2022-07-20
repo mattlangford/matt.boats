@@ -40,7 +40,7 @@ impl Map {
             bincode::deserialize(MAP_DATA).expect("Unable to load raw map data."),
         );
 
-        // const SEED: u64 = 42;
+        //const SEED: u64 = 50;
         //let mut rng = rand::rngs::StdRng::seed_from_u64(SEED);
         let mut rng = rand::thread_rng();
         let dist = rand::distributions::Uniform::from(0..lon_lat.ncols());

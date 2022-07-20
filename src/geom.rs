@@ -92,6 +92,10 @@ impl AABox {
         new.start[index] += self.dim[index];
         return new;
     }
+
+    pub fn area(&self) -> f32 {
+        self.dim[0] * self.dim[1]
+    }
 }
 
 pub fn aabox_are_adjacent(lhs: &AABox, rhs: &AABox) -> bool {
