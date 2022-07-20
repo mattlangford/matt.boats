@@ -96,6 +96,18 @@ impl AABox {
     pub fn area(&self) -> f32 {
         self.dim[0] * self.dim[1]
     }
+
+    pub fn scaled_mut(&mut self, factor: f32) {
+        let new_dim = self.dim * factor;
+        self.start -= 0.5 * (new_dim - self.dim);
+        self.dim = new_dim;
+    }
+
+    pub fn scaled(&self, factor: f32) -> AABox {
+        let mut new = self.clone();
+        new.scaled_mut(factor);
+        new
+    }
 }
 
 pub fn aabox_are_adjacent(lhs: &AABox, rhs: &AABox) -> bool {

@@ -253,10 +253,16 @@ fn step_search(
             return Ok(StepResult::Step(to_point));
         }
 
-        for (_, valid) in &mut grid.neighbors[current_i].iter_mut().filter(|(n, _)| *n == to_i) {
+        for (_, valid) in &mut grid.neighbors[current_i]
+            .iter_mut()
+            .filter(|(n, _)| *n == to_i)
+        {
             *valid = false;
         }
-        for (n, valid) in &mut grid.neighbors[to_i].iter_mut().filter(|(n, _)| *n == current_i) {
+        for (n, valid) in &mut grid.neighbors[to_i]
+            .iter_mut()
+            .filter(|(n, _)| *n == current_i)
+        {
             *valid = false;
         }
 
@@ -314,7 +320,7 @@ impl Component for App {
         );
         Self {
             map: map,
-            grid: Grid::new_subdivided(viewbox, 1),
+            grid: Grid::new_subdivided(viewbox.scaled(1.5), 1),
             zoom: true,
 
             position: start,
@@ -332,7 +338,8 @@ impl Component for App {
                 true
             }
             Self::Message::Step => {
-                loop {
+                const NUM_ITERS: usize = 5;
+                for i in 0..NUM_ITERS {
                     if self.position == self.goal {
                         break;
                     }
@@ -381,6 +388,7 @@ impl Component for App {
                         break;
                     }
                 }
+                log!("Unable to find solution in {} iteration.", NUM_ITERS);
                 true
             }
         }
