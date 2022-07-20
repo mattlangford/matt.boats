@@ -1,4 +1,5 @@
 #![allow(unused_macros)]
+#![allow(dead_code)]
 
 // Dish out to gloo::console since it doesn't format the inputs.
 macro_rules! log {

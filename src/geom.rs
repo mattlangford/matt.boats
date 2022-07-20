@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::utils::*;
 use nalgebra as na;
 use rand::distributions::Distribution;

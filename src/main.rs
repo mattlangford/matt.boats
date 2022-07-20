@@ -21,10 +21,6 @@ use std::collections::HashSet;
 
 const HEIGHT: f32 = 50000.0;
 
-fn f<T: std::fmt::Display>(v: T) -> String {
-    format!("{:.5}", v)
-}
-
 fn get_window_size() -> Option<na::Vector2<f32>> {
     let window = web_sys::window().unwrap();
     let w_height = window.inner_height().ok().and_then(|v| v.as_f64());
@@ -56,38 +52,33 @@ struct GraphNode {
 
 #[derive(Debug, Default)]
 struct Graph {
-    graph: Vec<GraphNode>,
+    nodes: Vec<GraphNode>,
 }
 
 impl Graph {
     fn set(&mut self, index: usize, score: f64) {
-        if min_in_place(&mut self.graph[index].score, score) {
-            for neighbor in self.graph[index].edges.clone() {
-                let cost = (self.graph[index].point - self.graph[neighbor].point).norm();
+        if min_in_place(&mut self.nodes[index].score, score) {
+            for neighbor in self.nodes[index].edges.clone() {
+                let cost = (self.nodes[index].point - self.nodes[neighbor].point).norm();
                 self.set(neighbor, score + cost as f64);
             }
         }
     }
 
     fn get(&self, index: usize) -> Vec<usize> {
-        let score = self.graph[index].score;
-        let mut edges = self.graph[index]
+        let score = self.nodes[index].score;
+        let mut edges = self.nodes[index]
             .edges
             .iter()
-            .filter(|&n| self.graph[*n].score < score)
+            .filter(|&n| self.nodes[*n].score < score)
             .copied()
             .collect::<Vec<_>>();
         edges.sort_by(|a, b| {
-            self.graph[*a]
+            self.nodes[*a]
                 .score
-                .partial_cmp(&self.graph[*b].score)
+                .partial_cmp(&self.nodes[*b].score)
                 .expect("Tried to compare a NaN")
         });
-        let scores = self.graph[index]
-            .edges
-            .iter()
-            .map(|&n| self.graph[n].score)
-            .collect::<Vec<_>>();
         edges
     }
 }
@@ -108,7 +99,7 @@ impl Grid {
 
     fn new_subdivided(viewbox: AABox, divides: usize) -> Self {
         let mut grid = Grid::new(viewbox);
-        for div in 0..divides {
+        for _ in 0..divides {
             let count = grid.boxes.len();
             for i in 0..count {
                 grid.split(i);
@@ -119,7 +110,7 @@ impl Grid {
 
     fn into_graph(&self) -> Graph {
         Graph {
-            graph: self
+            nodes: self
                 .boxes
                 .iter()
                 .zip(self.neighbors.iter())
@@ -128,7 +119,7 @@ impl Grid {
                     score: f64::INFINITY,
                     edges: ns
                         .iter()
-                        .filter(|(i, valid)| *valid)
+                        .filter(|(_, valid)| *valid)
                         .map(|(i, _)| *i)
                         .collect(),
                 })
@@ -222,17 +213,17 @@ fn step_search(
 
     let current_i = grid.query(&current)?;
 
-    if graph.graph[current_i].score.is_infinite() {
+    if graph.nodes[current_i].score.is_infinite() {
         let mut to_split = HashSet::<usize>::new();
-        for (i, g) in graph.graph.iter().enumerate() {
+        for (i, g) in graph.nodes.iter().enumerate() {
             // G is a losing cell.
             if g.score.is_finite() {
                 continue;
             }
 
             to_split.insert(i);
-            for (n, v) in &grid.neighbors[i] {
-                if graph.graph[*n].score.is_infinite() {
+            for (n, _) in &grid.neighbors[i] {
+                if graph.nodes[*n].score.is_infinite() {
                     continue;
                 }
                 to_split.insert(*n);
@@ -259,7 +250,7 @@ fn step_search(
         {
             *valid = false;
         }
-        for (n, valid) in &mut grid.neighbors[to_i]
+        for (_, valid) in &mut grid.neighbors[to_i]
             .iter_mut()
             .filter(|(n, _)| *n == current_i)
         {
@@ -339,7 +330,7 @@ impl Component for App {
             }
             Self::Message::Step => {
                 const NUM_ITERS: usize = 5;
-                for i in 0..NUM_ITERS {
+                for _ in 0..NUM_ITERS {
                     if self.position == self.goal {
                         break;
                     }
