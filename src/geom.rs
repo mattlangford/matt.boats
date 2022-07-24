@@ -5,6 +5,7 @@ use nalgebra as na;
 use rand::distributions::Distribution;
 
 pub type Vec2f = na::Vector2<f32>;
+pub type Vec2d = na::Vector2<f64>;
 
 #[derive(Debug, Default)]
 pub struct Line {
@@ -81,6 +82,10 @@ impl AABox {
         ]
     }
 
+    pub fn top_left(&self) -> Vec2f {
+        self.start
+    }
+
     pub fn center(&self) -> Vec2f {
         self.start + 0.5 * self.dim
     }
@@ -95,8 +100,16 @@ impl AABox {
         return new;
     }
 
+    pub fn width(&self) -> f32 {
+        self.dim[0]
+    }
+
+    pub fn height(&self) -> f32 {
+        self.dim[1]
+    }
+
     pub fn area(&self) -> f32 {
-        self.dim[0] * self.dim[1]
+        self.width() * self.height()
     }
 
     pub fn scaled_mut(&mut self, factor: f32) {

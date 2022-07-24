@@ -93,3 +93,35 @@ pub fn rect(props: &RectProps) -> Html {
             width={s(props.width)}/>
     }
 }
+
+#[derive(PartialEq, Properties)]
+pub struct CircleProps {
+    pub x: f32,
+    pub y: f32,
+    pub radius: f32,
+    #[prop_or_default]
+    pub class: Option<String>,
+}
+
+impl CircleProps {
+    pub fn new(pt: geom::Vec2f, r: f32) -> Self {
+        Self {
+            x: pt[0],
+            y: pt[1],
+            radius: r,
+            class: None,
+        }
+    }
+
+    pub fn with_class(mut self, class: &str) -> Self {
+        self.class = Some(String::from(class));
+        self
+    }
+}
+
+#[function_component(Circle)]
+pub fn circle(props: &CircleProps) -> Html {
+    html! {
+        <line cx={s(props.x)} cy={s(props.y)} r={s(props.radius)} class={props.class.clone().unwrap_or_default()}/>
+    }
+}
