@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use yew::function_component;
 use yew::prelude::*;
 

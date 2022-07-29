@@ -8,9 +8,12 @@ use geom::*;
 use map::*;
 use utils::*;
 
+use gloo::events::EventListener;
 use gloo::timers::callback::Interval;
 use nalgebra as na;
 use wasm_bindgen::JsCast;
+use web_sys::{EventTarget, HtmlInputElement};
+use yew::events::Event;
 use yew::prelude::*;
 
 use rand::seq::SliceRandom;
@@ -43,247 +46,104 @@ fn get_viewbox() -> Option<AABox> {
     })
 }
 
-#[derive(Debug, Default)]
-struct GraphNode {
-    point: Vec2f,
-    score: f64,
-    edges: Vec<usize>,
+#[derive(Properties, PartialEq)]
+pub struct ValueSetterProps {
+    pub callback: Callback<f64>,
+
+    pub name: String,
+
+    #[prop_or(0.0)]
+    pub init: f64,
+
+    #[prop_or(1.0)]
+    pub step: f64,
 }
 
-#[derive(Debug, Default)]
-struct Graph {
-    nodes: Vec<GraphNode>,
+struct ValueSetter {
+    value: f64,
+    name: String,
+}
+enum ValueSetterMessage {
+    Inc,
+    Dec,
+    Set(f64),
 }
 
-impl Graph {
-    fn set(&mut self, index: usize, score: f64) {
-        if min_in_place(&mut self.nodes[index].score, score) {
-            for neighbor in self.nodes[index].edges.clone() {
-                let cost = (self.nodes[index].point - self.nodes[neighbor].point).norm();
-                self.set(neighbor, score + cost as f64);
-            }
-        }
-    }
+impl Component for ValueSetter {
+    type Message = ValueSetterMessage;
+    type Properties = ValueSetterProps;
 
-    fn get(&self, index: usize) -> Vec<usize> {
-        let score = self.nodes[index].score;
-        let mut edges = self.nodes[index]
-            .edges
-            .iter()
-            .filter(|&n| self.nodes[*n].score < score)
-            .copied()
-            .collect::<Vec<_>>();
-        edges.sort_by(|a, b| {
-            self.nodes[*a]
-                .score
-                .partial_cmp(&self.nodes[*b].score)
-                .expect("Tried to compare a NaN")
-        });
-        edges
-    }
-}
-
-#[derive(Debug, Default)]
-struct Grid {
-    boxes: Vec<AABox>,
-    neighbors: Vec<Vec<(usize, bool)>>,
-}
-
-impl Grid {
-    fn new(viewbox: AABox) -> Self {
+    fn create(ctx: &Context<Self>) -> Self {
+        let props = ctx.props();
         Self {
-            boxes: vec![viewbox],
-            neighbors: vec![vec![]],
+            value: props.init,
+            name: props.name.clone(),
         }
     }
 
-    fn new_subdivided(viewbox: AABox, divides: usize) -> Self {
-        let mut grid = Grid::new(viewbox);
-        for _ in 0..divides {
-            let count = grid.boxes.len();
-            for i in 0..count {
-                grid.split(i);
-            }
+    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
+        match msg {
+            Self::Message::Inc => { self.value += ctx.props().step; }
+            Self::Message::Dec => { self.value -= ctx.props().step; }
+            Self::Message::Set(s) => { self.value = s; }
         }
-        grid
+        ctx.props().callback.emit(self.value);
+        true
     }
 
-    fn into_graph(&self) -> Graph {
-        Graph {
-            nodes: self
-                .boxes
-                .iter()
-                .zip(self.neighbors.iter())
-                .map(|(b, ns)| GraphNode {
-                    point: b.center(),
-                    score: f64::INFINITY,
-                    edges: ns
-                        .iter()
-                        .filter(|(_, valid)| *valid)
-                        .map(|(i, _)| *i)
-                        .collect(),
-                })
-                .collect(),
-        }
-    }
+    fn view(&self, ctx: &Context<Self>) -> Html {
+        let link = ctx.link();
 
-    fn query(&self, point: &Vec2f) -> Result<usize, String> {
-        self.boxes
-            .iter()
-            .enumerate()
-            .filter(|(_, b)| point_in_aabox(&point, b))
-            .map(|(i, _)| i)
-            .next()
-            .ok_or(format!("Unable to find point ({}) in grid.", point))
-    }
+        // Use batch_callback so if something unexpected happens we can return
+        // None and do nothing
+        let onchange = link.batch_callback(|e: Event| {
+            // When events are created the target is undefined, it's only
+            // when dispatched does the target get added.
+            let target: Option<EventTarget> = e.target();
+            // Events can bubble so this listener might catch events from child
+            // elements which are not of type HtmlInputElement
+            let input = target
+                .and_then(|t| t.dyn_into::<HtmlInputElement>().ok())
+                .map(|i| i.value().parse::<f64>().ok())
+                .flatten();
+            input.map(|v| Self::Message::Set(v))
+        });
 
-    fn split(&mut self, old_index: usize) {
-        let new_index = self.boxes.len();
-        let new = self.boxes[old_index].split_mut();
-        self.boxes.push(new);
-
-        let old_neighbors = self.neighbors[old_index].clone();
-        self.neighbors[old_index].clear();
-        self.neighbors.push(Vec::with_capacity(old_neighbors.len()));
-
-        for (i, _) in old_neighbors {
-            if aabox_are_adjacent(&self.boxes[new_index], &self.boxes[i]) {
-                self.neighbors[i].push((new_index, true));
-                self.neighbors[new_index].push((i, true));
-            }
-
-            if aabox_are_adjacent(&self.boxes[old_index], &self.boxes[i]) {
-                self.neighbors[old_index].push((i, true));
-            } else {
-                let index = self.neighbors[i]
-                    .iter()
-                    .position(|(j, _)| *j == old_index)
-                    .unwrap();
-                self.neighbors[i].swap_remove(index);
-            }
-        }
-
-        self.neighbors[old_index].push((new_index, true));
-        self.neighbors[new_index].push((old_index, true));
-    }
-
-    fn render(&self) -> Html {
         html! {
-            for self.boxes.iter().enumerate().map(|(i, b)| {
-                let center = b.center();
-                html!{
-                    <>
-                        <svg::Rect ..svg::RectProps::from_aabox(b).with_class("gridline")/>
-                        <text x={svg::s(center[0])} y={svg::s(center[1])} class="heavy" transform="scale(1,1)">{i}</text>
-                        {
-                        for self.neighbors[i].iter()
-                            .filter(|n| n.1)
-                            .map(|n| Line::new_segment(center, self.boxes[n.0].center()))
-                            .map(|l| html! { <svg::Line ..svg::LineProps::from_line(&l).with_class("gridline-thin")/> } )
-                        }
-                    </>
-                }
-            })
+            <table class="value-panel">
+                <tbody width="100%">
+                    <tr>
+                        <td width="25%">
+                            <button type="button" class="dec-button"
+                                onclick={link.callback(|_| Self::Message::Dec )}>{"-"}</button>
+                        </td>
+                        <td width="50%">
+                            <tr>
+                                <div class="value-panel-text">
+                                    {"test"}
+                                </div>
+                            </tr>
+                        </td>
+                        <td width="25%">
+                            <button type="button" style="float:right;" class="inc-button"
+                                onclick={link.callback(|_| Self::Message::Inc )}>{"+"}</button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
         }
     }
-}
-
-#[derive(Debug)]
-enum StepResult {
-    Step(Vec2f),
-    Success,
-    Split,
-}
-
-fn step_search(
-    current: Vec2f,
-    goal: Vec2f,
-    map: &[Vec2f],
-    grid: &mut Grid,
-) -> Result<StepResult, String> {
-    if !intersect_polygon(&Line::new_segment(current, goal), map) {
-        return Ok(StepResult::Success);
-    }
-
-    let mut graph = grid.into_graph();
-
-    // Populate goal
-    let goal_i = grid.query(&goal)?;
-    graph.set(goal_i, 0.0);
-
-    let current_i = grid.query(&current)?;
-
-    if graph.nodes[current_i].score.is_infinite() {
-        let mut to_split = HashSet::<usize>::new();
-        for (i, g) in graph.nodes.iter().enumerate() {
-            // G is a losing cell.
-            if g.score.is_finite() {
-                continue;
-            }
-
-            to_split.insert(i);
-            for (n, _) in &grid.neighbors[i] {
-                if graph.nodes[*n].score.is_infinite() {
-                    continue;
-                }
-                to_split.insert(*n);
-            }
-        }
-
-        for i in to_split {
-            grid.split(i);
-        }
-
-        return Ok(StepResult::Split);
-    }
-
-    let mut count = 0;
-    for to_i in graph.get(current_i) {
-        let to_point = grid.boxes[to_i].center();
-        if !intersect_polygon(&Line::new_segment(current, to_point), map) {
-            return Ok(StepResult::Step(to_point));
-        }
-
-        for (_, valid) in &mut grid.neighbors[current_i]
-            .iter_mut()
-            .filter(|(n, _)| *n == to_i)
-        {
-            *valid = false;
-        }
-        for (_, valid) in &mut grid.neighbors[to_i]
-            .iter_mut()
-            .filter(|(n, _)| *n == current_i)
-        {
-            *valid = false;
-        }
-
-        count += 1;
-        if count > 10 {
-            return Err(String::from("MaxIterations reached"));
-        }
-    }
-
-    if count == 0 {
-        grid.split(current_i);
-    }
-    return Ok(StepResult::Split);
 }
 
 struct App {
-    grid: Grid,
-    map: Map,
-    zoom: bool,
-
-    position: Vec2f,
-    goal: Vec2f,
-    history: Vec<Vec2f>,
-
-    solution: Vec<Vec2f>,
+    scale: f64,
+    center: Vec2d,
 }
 
 enum Msg {
-    ZoomToggle,
-    Step,
+    SetScale(f64),
+    SetCenterX(f64),
+    SetCenterY(f64)
 }
 
 impl Component for App {
@@ -291,153 +151,65 @@ impl Component for App {
     type Properties = ();
 
     fn create(_ctx: &Context<Self>) -> Self {
-        let viewbox = get_viewbox().expect("Unable to get viewBox.");
-        let map = Map::generate_random(&viewbox);
-
-        let edges = viewbox.edges();
-        let start = edges
-            .iter()
-            .flat_map(|l| generate_points_on_line(10, l))
-            .map(|pt| 0.98 * pt)
-            .filter(|pt| !point_in_polygon(&pt, &map.coordinates))
-            .next()
-            .unwrap_or(map.ports[1]);
-        let goal = map.ports[0];
-
-        log!(
-            "Loaded {} coordinates and {} ports",
-            map.coordinates.len(),
-            map.ports.len()
-        );
         Self {
-            map: map,
-            grid: Grid::new_subdivided(viewbox.scaled(1.5), 1),
-            zoom: true,
-
-            position: start,
-            goal: goal,
-            history: vec![start],
-
-            solution: vec![],
+            scale: 1.0,
+            center: Vec2d::new(0.0, 0.0),
         }
     }
 
-    fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
+    fn update(&mut self, ctx: &Context<Self>, msg: Msg) -> bool {
         match msg {
-            Self::Message::ZoomToggle => {
-                self.zoom = !self.zoom;
-                true
-            }
-            Self::Message::Step => {
-                const NUM_ITERS: usize = 5;
-                for _ in 0..NUM_ITERS {
-                    if self.position == self.goal {
-                        break;
-                    }
-
-                    let result = step_search(
-                        self.position,
-                        self.goal,
-                        &self.map.coordinates,
-                        &mut self.grid,
-                    );
-                    log!("step_search result: {:?}", result);
-
-                    match result {
-                        Err(s) => {
-                            log!("Error from step_search: {}", s);
-                        }
-                        Ok(StepResult::Step(p)) => {
-                            self.position = p;
-                            self.history.push(self.position);
-                        }
-                        Ok(StepResult::Success) => {
-                            self.position = self.goal;
-                            self.history.push(self.position);
-
-                            self.solution.push(self.position);
-                            loop {
-                                let pos = self.solution.last().unwrap();
-                                for (i, h) in self.history.iter().enumerate() {
-                                    if !intersect_polygon(
-                                        &Line::new_segment(*h, *pos),
-                                        &self.map.coordinates,
-                                    ) {
-                                        self.solution.push(*h);
-                                        if i == 0 {
-                                            return true;
-                                        }
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                        Ok(StepResult::Split) => {}
-                    }
-
-                    if self.grid.boxes.iter().any(|b| b.area() < 10.0) {
-                        break;
-                    }
-                }
-                log!("Unable to find solution in {} iteration.", NUM_ITERS);
-                true
-            }
+            Msg::SetScale(s) => { self.scale = s; },
+            Msg::SetCenterX(x) => { self.center[0] = x; },
+            Msg::SetCenterY(y) => { self.center[1] = y; },
         }
+        true
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let window_size = get_window_size().expect("Unable to get window size.");
-        let scale: f32 = if self.zoom { 1.1 } else { 1.2 };
         let viewbox = get_viewbox().unwrap();
 
         let style_string = format!("width:{}px;height:{}px", window_size[0], window_size[1]);
 
-        let viewbox_string = format!(
-            "{} {} {} {}",
-            scale * viewbox.start[0],
-            scale * viewbox.start[1],
-            scale * viewbox.dim[0],
-            scale * viewbox.dim[1]
-        );
+        //let mut img = image::GrayImage::new(window_size[0] as u32, window_size[1] as u32);
 
-        let point_str = self
-            .map
-            .coordinates
-            .iter()
-            .map(|pt| format!("{:.3},{:.3} ", pt[0], pt[1]))
-            .collect::<String>();
+        //let offset = |x, y| {
+        //    (self.scale * (x as f64 / window_size[0] as f64 - 0.5) + self.center[0],
+        //     self.scale * (y as f64 / window_size[1] as f64 - 0.5) + self.center[1])
+        // };
+
+        //for ((cx, cy), px) in img.enumerate_pixels_mut().map(|(x, y, px)| (offset(x, y), px)) {
+        //    const MAX_STEPS: usize = 32;
+
+        //    let mut x = 0.0;
+        //    let mut y = 0.0;
+        //    let steps = (0..MAX_STEPS).take_while(|_| {
+        //        let xn = x;
+        //        let yn = y;
+
+        //        x = xn * xn - yn * yn - cx as f64;
+        //        y = 2.0 * (xn * yn).abs() - cy as f64;
+        //        x * x + y * y < 10.0
+        //    }).count();
+
+        //    let v = 255.0 * (steps as f32) / (MAX_STEPS as f32);
+        //    *px = image::Luma([v as u8]);
+        //}
+
+        //let mut buf = std::io::Cursor::new(Vec::new());
+        //img.write_to(&mut buf, image::ImageOutputFormat::Png).unwrap();
+        //let res_base64 = base64::encode(&buf.into_inner());
 
         html! {
-        <>
-            <div id="container" style={style_string}
-                onclick={ctx.link().callback(|_| Self::Message::Step )}>
-                <svg width="100%" height="100%" viewBox={viewbox_string} preserveAspectRatio="none" class="svgstyle">
-                    <polyline class="land" points={point_str}/>
+            <div id="container" style={style_string}>
+                //<img src={format!("data:image/png;base64,{}", res_base64)}/>
 
-                    {
-                    for self.map.ports.iter()
-                        .map(|pt| svg::RectProps::square(pt, 500.0 * scale).with_class("port"))
-                        .map(|props| html! { <svg::Rect ..props/> })
-                    }
+                <div id="panel">
+                    <ValueSetter name="scale" init=1.0 callback={ctx.link().callback(|v| Msg::SetScale(v))}/>
+                </div>
 
-                    <svg::Rect ..svg::RectProps::from_aabox(&viewbox).with_class("outline")/>
-                    <svg::Rect ..svg::RectProps::square(&self.position, 400.0 * scale).with_class("position")/>
-                    <svg::Rect ..svg::RectProps::square(&self.goal, 400.0 * scale).with_class("goal")/>
-                    {
-                        for self.history.windows(2)
-                            .map(|s| svg::LineProps::from_line(&Line::new_segment(s[0], s[1])).with_class("path"))
-                            .map(|props| html! { <svg::Line ..props/> })
-                    }
-                    {
-                        for self.solution.windows(2)
-                            .map(|s| svg::LineProps::from_line(&Line::new_segment(s[0], s[1])).with_class("solution"))
-                            .map(|props| html! { <svg::Line ..props/> })
-                    }
-
-                    {self.grid.render()}
-                </svg>
             </div>
-        </>
         }
     }
 }
