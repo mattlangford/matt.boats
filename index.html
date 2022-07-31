@@ -13,56 +13,66 @@
             position: absolute;
         }
 
-        #panel {
+        .control-panel {
             position: absolute;
             bottom: 0;
-            width: 95%;
-            align: center;
-            height: 50px;
+            right: 0;
+            width: min(20%, 150px);
+            height: min(30%, 200px);
+            margin-bottom: 10px;
+            margin-right: 10px;
             border: 1px solid red;
+            background-color: rgba(0, 0, 0, 0.1);
+
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            grid-template-rows: repeat(4, 1fr);
         }
-        .value-panel {
-            width: 200px;
-            height: 100%;
-        }
-        .value-panel-text {
-            width: 100%;
-            color: white;
-            background-color: black;
-            border: none;
-            font-family: Monospace;
-            text-align: center;
-        }
-        .value-panel button {
-            width: 100%;
+        .control-panel button {
             font-size: 16px;
             text-align: center;
             background-color: black;
             color: white;
-            height: 100%;
             border: 1px solid grey;
             font-family: Monospace;
-            padding: 0.0;
+            margin: 3px;
+            border-radius: 5%;
         }
-        .value-panel button:hover {
+        .control-panel button:hover {
             background-color:grey;
         }
-        .value-panel button:active {
+        .control-panel button:active {
             background-color:red;
             border: 1px solid red;
         }
-        .value-panel input {
-            height: 100%;
-            line-height: 100%;
-            padding: 0px 0px;
-            color: white;
-            background-color: black;
-            border: none;
-            font-family: Monospace;
-            text-align: center;
+
+        #control-panel-reset {
+            grid-row: 2;
+            grid-column: 3 / span 2;
         }
-        .value-panel input:focus {
-            outline: none;
+        #control-panel-inc-x {
+            grid-row: 2;
+            grid-column: 5 / span 2;
+        }
+        #control-panel-dec-x {
+            grid-row: 2;
+            grid-column: 1 / span 2;
+        }
+        #control-panel-inc-y {
+            grid-row: 1;
+            grid-column: 3 / span 2;
+        }
+        #control-panel-dec-y {
+            grid-row: 3;
+            grid-column: 3 / span 2;
+        }
+        #control-panel-inc-scale {
+            grid-row: 4;
+            grid-column: 4 / span 3;
+        }
+        #control-panel-dec-scale {
+            grid-row: 4;
+            grid-column: 1 / span 3;
         }
 
 

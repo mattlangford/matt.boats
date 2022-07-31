@@ -239,7 +239,7 @@ mod tests {
             &lhs,
             &AABox::new_square(Vec2f::new(0.0, 1.0), 0.1)
         ));
-        assert_fakse!(aabox_are_adjacent(
+        assert_false!(aabox_are_adjacent(
             &lhs,
             &AABox::new_square(Vec2f::new(0.5, 0.5), 0.1)
         ));
