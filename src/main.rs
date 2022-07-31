@@ -44,7 +44,7 @@ fn get_viewbox() -> Option<AABox> {
     })
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct ControlState {
     x: f64,
     y: f64,
@@ -53,6 +53,18 @@ pub struct ControlState {
     dx: Option<f64>,
     dy: Option<f64>,
     dscale: Option<f64>,
+}
+impl Default for ControlState {
+    fn default() -> Self {
+        Self {
+            x: -1.745,
+            y: -0.038,
+            scale: 0.1789,
+            dx: None,
+            dy: None,
+            dscale: None,
+        }
+    }
 }
 
 #[derive(Properties, PartialEq)]
@@ -86,10 +98,7 @@ impl Component for ControlPanel {
 
     fn create(ctx: &Context<Self>) -> Self {
         let props = ctx.props();
-        let state = ControlState {
-            scale: 5.0,
-            ..ControlState::default()
-        };
+        let state = ControlState::default();
         ctx.props().callback.emit(state.clone());
         Self {
             state: state,
@@ -134,10 +143,7 @@ impl Component for ControlPanel {
                 self.state.dscale = Some(-dscale);
             }
             Action::Reset => {
-                self.state = ControlState {
-                    scale: 5.0,
-                    ..ControlState::default()
-                };
+                self.state = ControlState::default();
             }
         }
         self.state.scale = self.state.scale.abs().max(f64::EPSILON);
@@ -208,7 +214,6 @@ impl Component for ControlPanel {
             }
         });
 
-        let link = ctx.link();
         let document = web_sys::window()
             .and_then(|w| w.document())
             .expect("Unable to load document.");
@@ -223,9 +228,12 @@ impl Component for ControlPanel {
 struct App {
     scale: f64,
     center: Vec2d,
+
+    resize_listener: Option<EventListener>,
 }
 
 enum Msg {
+    Resize,
     Update(ControlState),
 }
 
@@ -237,11 +245,13 @@ impl Component for App {
         Self {
             scale: 1.0,
             center: Vec2d::new(0.0, 0.0),
+            resize_listener: None,
         }
     }
 
     fn update(&mut self, ctx: &Context<Self>, msg: Msg) -> bool {
         match msg {
+            Self::Message::Resize => true,
             Self::Message::Update(msg) => {
                 log!("{:?} msg", msg);
                 self.scale = msg.scale as f64;
@@ -304,6 +314,20 @@ impl Component for App {
                 <ControlPanel callback={ctx.link().callback(|s| Msg::Update(s))} window={viewbox.dim}/>
             </div>
         }
+    }
+
+    fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
+        if !first_render {
+            return;
+        }
+
+        let link = ctx.link();
+        let window = web_sys::window().unwrap();
+        let resize = ctx.link().callback(|_| Self::Message::Resize);
+        let listener = EventListener::new(&window, "resize", move |event| {
+            resize.emit(());
+        });
+        self.resize_listener.replace(listener);
     }
 }
 
