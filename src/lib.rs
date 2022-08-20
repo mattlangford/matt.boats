@@ -34,13 +34,29 @@ pub struct RenderRequest {
     window_y: f64,
 
     steps: u8,
+
+    divergence_threshold: f64,
 }
 #[derive(Serialize, Deserialize)]
 pub struct RenderResponse {
-    data: String,
+    data: Vec<u16>,
+    min: u16,
+    max: u16,
+
+    window_x: usize,
+    window_y: usize,
 }
 
 pub struct Worker {}
+
+// (3, 2) => (1, 1)
+fn index(i: usize, w_x: usize) -> (usize, usize) {
+    (i % w_x, i / w_x)
+}
+// (1, 1, 2) => (3)
+fn rindex(x: usize, y: usize, w_x: usize) -> usize {
+    x * w_x + y
+}
 
 impl gloo::worker::Worker for Worker {
     type Message = ();
@@ -62,46 +78,48 @@ impl gloo::worker::Worker for Worker {
         state: Self::Input,
         id: gloo::worker::HandlerId,
     ) {
-        let mut img = image::GrayImage::new(state.window_x as u32, state.window_y as u32);
+        let data: Vec<u16> = vec![0; state.window_x as usize * state.window_y as usize];
+        type Complex = na::Complex<f64>;
 
         let ratio = state.window_y / state.window_x;
-        let offset = |x, y| {
-            (
+        let offset = |i: usize| {
+            let (x, y) = index(i, state.window_x as usize);
+            Complex::new(
                 state.scale * (x as f64 / state.window_x as f64 - 0.5) + state.center_x,
                 state.scale * ratio * (y as f64 / state.window_y as f64 - 0.5) + state.center_y,
             )
         };
 
-        let mut max = 0;
-        let mut min = 255;
-        for ((cx, cy), px) in img
-            .enumerate_pixels_mut()
-            .map(|(x, y, px)| (offset(x, y), px))
-        {
-            const MAX_STEPS: usize = 64;
-            type Complex = na::Complex<f64>;
-            let c = Complex::new(cx, cy);
+        let data_size = state.window_x as usize * state.window_y as usize;
 
+        let mut max = u16::MIN;
+        let mut min = u16::MAX;
+
+        let data = (0..data_size).map(offset).map(|c| {
             let mut z = Complex::new(0.0, 0.0);
-            let steps = (0..state.steps)
+            let count = (0..state.steps)
                 .take_while(|_| {
                     let f = Complex::new(z.re.abs(), z.im.abs());
                     z = f * f + c;
-                    (z.re * z.re + z.im * z.im) < 10.0
+                    (z.re * z.re + z.im * z.im) < state.divergence_threshold
                 })
-                .count();
+                .count() as u16;
 
-            let v = 255.0 * (steps as f32) / (state.steps as f32);
-            max = max.max(steps);
-            min = min.min(steps);
-            *px = image::Luma([v as u8]);
-        }
+            max = max.max(count);
+            min = min.max(count);
+            count
+        });
 
-        let mut buf = std::io::Cursor::new(Vec::new());
-        img.write_to(&mut buf, image::ImageOutputFormat::Png)
-            .unwrap();
-        let res_base64 = base64::encode(&buf.into_inner());
-        scope.respond(id, RenderResponse { data: res_base64 });
+        scope.respond(
+            id,
+            RenderResponse {
+                data: data.collect(),
+                min: min,
+                max: max,
+                window_x: state.window_x as usize,
+                window_y: state.window_y as usize,
+            },
+        );
     }
 }
 
@@ -139,7 +157,7 @@ pub struct App {
 pub enum Msg {
     Resize,
     Update(ControlState),
-    SetImage(String),
+    SetImage(RenderResponse),
 }
 
 impl Component for App {
@@ -151,7 +169,7 @@ impl Component for App {
 
         let mut spawner = <Worker as gloo::worker::Spawnable>::spawner();
         let link = ctx.link().clone();
-        spawner.callback(move |resp| link.send_message(Self::Message::SetImage(resp.data)));
+        spawner.callback(move |resp| link.send_message(Self::Message::SetImage(resp)));
 
         let window_size = get_window_size()
             .expect("Unable to get window size.")
@@ -163,6 +181,7 @@ impl Component for App {
             window_x: window_size[0],
             window_y: window_size[1],
             steps: 8,
+            divergence_threshold: 10.0,
         };
 
         Self {
@@ -183,7 +202,7 @@ impl Component for App {
                     .cast::<f64>();
                 self.request.window_x = window_size[0];
                 self.request.window_y = window_size[1];
-                self.request.steps = 8;
+                self.request.steps = 16;
                 self.bridge.send(self.request.clone());
                 false
             }
@@ -191,17 +210,28 @@ impl Component for App {
                 self.request.center_x = msg.x;
                 self.request.center_y = msg.y;
                 self.request.scale = msg.scale;
-                self.request.steps = 8;
+                self.request.steps = 16;
                 self.bridge.send(self.request.clone());
                 false
             }
             Self::Message::SetImage(msg) => {
-                if self.request.steps < 255 {
+                if self.request.steps < 64 {
                     self.request.steps = self.request.steps.saturating_mul(2);
                     self.bridge.send(self.request.clone());
                 }
 
-                self.data = msg;
+                let range = (msg.max - msg.min) as f32;
+                let mut img =
+                    image::GrayImage::from_fn(msg.window_x as u32, msg.window_y as u32, |y, x| {
+                        let count = msg.data[rindex(x as usize, y as usize, msg.window_x as usize)];
+                        let scaled = 255.0 * ((count - msg.min) as f32 / range);
+                        image::Luma([scaled as u8])
+                    });
+
+                let mut buf = std::io::Cursor::new(Vec::new());
+                img.write_to(&mut buf, image::ImageOutputFormat::Png)
+                    .unwrap();
+                self.data = base64::encode(&buf.into_inner());
                 true
             }
         }
