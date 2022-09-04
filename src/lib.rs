@@ -24,7 +24,7 @@ use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
-#[derive(Serialize, Deserialize, Default, Clone)]
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct RenderRequest {
     center_x: f64,
     center_y: f64,
@@ -192,7 +192,8 @@ impl Component for App {
         let window_size = get_window_size()
             .expect("Unable to get window size.")
             .cast::<f64>();
-        let request = RenderRequest {
+
+        let mut request = RenderRequest {
             center_x: -1.745,
             center_y: -0.038,
             scale: 0.1789,
@@ -202,12 +203,20 @@ impl Component for App {
             divergence_threshold: 10.0,
         };
 
+        if window_size[1] > window_size[0] {
+            request.center_x = -1.8608;
+            request.center_y = -0.0035;
+            request.scale = 0.0058;
+        }
+        let bridge = spawner.spawn("worker.js");
+        bridge.send(request.clone());
+
         Self {
             request: request,
             image: None,
             step_size: 4,
             resize_listener: None,
-            bridge: spawner.spawn("worker.js"),
+            bridge: bridge,
         }
     }
 
@@ -220,7 +229,6 @@ impl Component for App {
                     .cast::<f64>();
                 r.window_x = window_size[0];
                 r.window_y = window_size[1];
-                r.steps = 32;
                 self.bridge.send(self.request.clone());
 
                 self.step_size = 4;
@@ -232,6 +240,7 @@ impl Component for App {
                 r.scale = msg.scale;
 
                 self.step_size = 4;
+                log!("{:?}", r);
 
                 self.bridge.send(r.clone());
                 false
@@ -240,7 +249,13 @@ impl Component for App {
                 let mut steps = r.steps;
 
                 let threshold = median(msg.hist.clone()) / 10;
-                let fill_count = msg.hist.iter().filter(|&h| *h > threshold).count();
+                let fill_count = msg
+                    .hist
+                    .iter()
+                    .rev()
+                    .take(msg.hist.len() / 2)
+                    .filter(|&h| *h > threshold)
+                    .count();
 
                 log!(
                     "Steps: {} (+{}) Filled: {} ({}) Hist: {:?}",
@@ -259,7 +274,6 @@ impl Component for App {
                 }
 
                 if steps != r.steps && steps > 32 && steps < 500 {
-                    log!("step_size: {}", self.step_size);
                     self.step_size = (self.step_size * 2).max(32);
                     r.steps = steps;
                     self.bridge.send(r.clone());
@@ -286,7 +300,6 @@ impl Component for App {
     fn view(&self, ctx: &Context<Self>) -> Html {
         let window_size = get_window_size().expect("Unable to get window size.");
         let viewbox = get_viewbox().unwrap();
-        log!("Window size: {}", window_size);
 
         let style_string = format!("width:{}px;height:{}px", window_size[0], window_size[1]);
 
@@ -308,7 +321,13 @@ impl Component for App {
                          })}
                     />
                 }
-                <ControlPanel callback={link.callback(|s| Msg::Update(s))} window={viewbox.dim}/>
+                <ControlPanel
+                    callback={link.callback(|s| Msg::Update(s))}
+                    window={viewbox.dim}
+                    x={self.request.center_x}
+                    y={self.request.center_y}
+                    scale={self.request.scale}
+                />
             </div>
         }
     }

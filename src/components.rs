@@ -4,7 +4,7 @@ use yew::prelude::*;
 
 use crate::geom::Vec2f;
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct ControlState {
     pub x: f64,
     pub y: f64,
@@ -14,23 +14,15 @@ pub struct ControlState {
     pub dy: Option<f64>,
     pub dscale: Option<f64>,
 }
-impl Default for ControlState {
-    fn default() -> Self {
-        Self {
-            x: -1.745,
-            y: -0.038,
-            scale: 0.1789,
-            dx: None,
-            dy: None,
-            dscale: None,
-        }
-    }
-}
 
 #[derive(Properties, PartialEq)]
 pub struct ControlPanelProps {
     pub callback: Callback<ControlState>,
     pub window: Vec2f,
+
+    pub x: f64,
+    pub y: f64,
+    pub scale: f64,
 }
 
 pub struct ControlPanel {
@@ -58,8 +50,10 @@ impl Component for ControlPanel {
 
     fn create(ctx: &Context<Self>) -> Self {
         let props = ctx.props();
-        let state = ControlState::default();
-        ctx.props().callback.emit(state.clone());
+        let mut state = ControlState::default();
+        state.x = props.x;
+        state.y = props.y;
+        state.scale = props.scale;
         Self {
             state: state,
             listener: None,
@@ -103,7 +97,7 @@ impl Component for ControlPanel {
                 self.state.dscale = Some(-dscale);
             }
             Action::Reset => {
-                self.state = ControlState::default();
+                //self.state = ControlState::default();
             }
         }
         self.state.scale = self.state.scale.abs().max(f64::EPSILON);
@@ -123,9 +117,9 @@ impl Component for ControlPanel {
 
         html! {
             <div class="control-panel">
-                <button type="button"
-                        id="control-panel-reset"
-                        onclick={link.callback(move |e| callback(e, Action::Reset))}>{"○"}</button>
+                //<button type="button"
+                //        id="control-panel-reset"
+                //        onclick={link.callback(move |e| callback(e, Action::Reset))}>{"○"}</button>
                 <button type="button"
                         id="control-panel-inc-x"
                         onclick={link.callback(move |e| callback(e, Action::IncX))}>{"x+"}</button>
