@@ -17,12 +17,12 @@
             position: absolute;
             bottom: 0;
             right: 0;
-            width: min(20%, 150px);
-            height: min(30%, 200px);
+            width: max(20%, 150px);
+            height: min(30%, 150px);
             margin-bottom: 10px;
             margin-right: 10px;
-            border: 1px solid red;
             background-color: rgba(0, 0, 0, 0.1);
+            border-radius: 5%;
 
             display: grid;
             grid-template-columns: repeat(6, 1fr);
@@ -127,6 +127,7 @@
     </style>
     <title>Boats!</title>
     <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <link data-trunk rel="rust" href="Cargo.toml" data-bin="app" data-type="main" />
     <link data-trunk rel="rust" href="Cargo.toml" data-bin="worker" data-type="worker" />

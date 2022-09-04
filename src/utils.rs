@@ -49,3 +49,16 @@ pub fn min_in_place<T: std::cmp::PartialOrd>(lhs: &mut T, rhs: T) -> bool {
     }
     false
 }
+
+pub fn median<T: std::cmp::PartialOrd + Copy>(mut d: Vec<T>) -> T {
+    d.sort_by(|a, b| {
+        if a == b {
+            std::cmp::Ordering::Equal
+        } else if a < b {
+            std::cmp::Ordering::Less
+        } else {
+            std::cmp::Ordering::Greater
+        }
+    });
+    d[d.len() / 2]
+}

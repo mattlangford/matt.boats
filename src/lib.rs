@@ -212,22 +212,21 @@ impl Component for App {
     }
 
     fn update(&mut self, ctx: &Context<Self>, msg: Msg) -> bool {
+        let r = &mut self.request;
         match msg {
             Self::Message::Resize => {
                 let window_size = get_window_size()
                     .expect("Unable to get window size.")
                     .cast::<f64>();
-                self.request.window_x = window_size[0];
-                self.request.window_y = window_size[1];
-                self.request.steps = 32;
+                r.window_x = window_size[0];
+                r.window_y = window_size[1];
+                r.steps = 32;
                 self.bridge.send(self.request.clone());
 
                 self.step_size = 4;
                 false
             }
             Self::Message::Update(msg) => {
-                let r = &mut self.request;
-
                 r.center_x = msg.x;
                 r.center_y = msg.y;
                 r.scale = msg.scale;
@@ -238,20 +237,20 @@ impl Component for App {
                 false
             }
             Self::Message::SetImage(msg) => {
-                let mut steps = self.request.steps;
+                let mut steps = r.steps;
+
+                let threshold = median(msg.hist.clone()) / 10;
+                let fill_count = msg.hist.iter().filter(|&h| *h > threshold).count();
+
                 log!(
-                    "Steps: {} (+{}) Hist: {:?}",
-                    self.request.steps,
+                    "Steps: {} (+{}) Filled: {} ({}) Hist: {:?}",
+                    steps,
                     self.step_size,
+                    fill_count,
+                    threshold,
                     msg.hist
                 );
 
-                let fill_count = msg.hist.iter().filter(|&h| *h != 0).count();
-                log!(
-                    "Fill Count: {} p_last: {}",
-                    fill_count,
-                    *msg.hist.last().unwrap() as f64 / msg.hist.iter().sum::<usize>() as f64
-                );
                 if fill_count < 64 {
                     steps += self.step_size;
                 }
@@ -259,11 +258,11 @@ impl Component for App {
                     steps -= self.step_size;
                 }
 
-                if steps != self.request.steps && steps > 32 && steps < 500 {
+                if steps != r.steps && steps > 32 && steps < 500 {
                     log!("step_size: {}", self.step_size);
                     self.step_size = (self.step_size * 2).max(32);
-                    self.request.steps = steps;
-                    self.bridge.send(self.request.clone());
+                    r.steps = steps;
+                    self.bridge.send(r.clone());
                 }
 
                 self.image = image::ImageBuffer::from_vec(
@@ -287,6 +286,7 @@ impl Component for App {
     fn view(&self, ctx: &Context<Self>) -> Html {
         let window_size = get_window_size().expect("Unable to get window size.");
         let viewbox = get_viewbox().unwrap();
+        log!("Window size: {}", window_size);
 
         let style_string = format!("width:{}px;height:{}px", window_size[0], window_size[1]);
 
