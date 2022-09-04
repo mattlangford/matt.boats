@@ -229,9 +229,8 @@ impl Component for App {
                     .cast::<f64>();
                 r.window_x = window_size[0];
                 r.window_y = window_size[1];
-                self.bridge.send(self.request.clone());
 
-                self.step_size = 4;
+                self.bridge.send(r.clone());
                 false
             }
             Self::Message::Update(msg) => {
@@ -239,35 +238,45 @@ impl Component for App {
                 r.center_y = msg.y;
                 r.scale = msg.scale;
 
-                self.step_size = 4;
-                log!("{:?}", r);
-
                 self.bridge.send(r.clone());
                 false
             }
             Self::Message::SetImage(msg) => {
                 let mut steps = r.steps;
 
-                let threshold = median(msg.hist.clone()) / 10;
-                let fill_count = msg
+                let threshold =
+                    (0.25 * msg.hist.iter().sum::<usize>() as f64 / msg.hist.len() as f64) as usize;
+                let leading = msg.hist.iter().take_while(|&b| *b < threshold).count();
+                let trailing = msg
                     .hist
                     .iter()
                     .rev()
-                    .take(msg.hist.len() / 2)
-                    .filter(|&h| *h > threshold)
+                    .skip(1)
+                    .take_while(|&b| *b < threshold)
                     .count();
+                //log!(
+                //    "steps: {} (+{}), thresh: {}, lead: {}, trail: {}, hist: {:?}",
+                //    steps,
+                //    self.step_size,
+                //    threshold,
+                //    leading,
+                //    trailing,
+                //    msg.hist
+                //);
 
-                if fill_count < 64 {
+                if trailing > self.step_size {
+                    steps -= trailing;
+                } else if steps - leading < 32 {
                     steps += self.step_size;
                 }
-                if fill_count > 128 {
-                    steps -= self.step_size;
-                }
 
-                if steps != r.steps && steps > 32 && steps < 500 {
+                if steps != r.steps && steps > 32 && steps <= 256 {
                     self.step_size = (self.step_size * 2).max(32);
                     r.steps = steps;
+                    //log!("Requesting with steps: {}", steps);
                     self.bridge.send(r.clone());
+                } else {
+                    self.step_size = 4;
                 }
 
                 self.image = image::ImageBuffer::from_vec(
