@@ -33,27 +33,26 @@ pub struct RenderRequest {
     window_x: f64,
     window_y: f64,
 
-    steps: u8,
+    steps: usize,
 
     divergence_threshold: f64,
 }
 #[derive(Serialize, Deserialize)]
 pub struct RenderResponse {
-    data: Vec<u16>,
-    min: u16,
-    max: u16,
+    data: Vec<u8>,
+    hist: Vec<usize>,
 
     window_x: usize,
     window_y: usize,
 }
 
-pub struct Worker {}
+pub struct Worker {
+    prev_hist: Vec<usize>,
+}
 
-// (3, 2) => (1, 1)
 fn index(i: usize, w_x: usize) -> (usize, usize) {
     (i % w_x, i / w_x)
 }
-// (1, 1, 2) => (3)
 fn rindex(x: usize, y: usize, w_x: usize) -> usize {
     x * w_x + y
 }
@@ -65,12 +64,12 @@ impl gloo::worker::Worker for Worker {
 
     fn create(_: &gloo::worker::WorkerScope<Self>) -> Self {
         log!("Creating worker.");
-        Worker {}
+        Worker {
+            prev_hist: Vec::new(),
+        }
     }
 
-    fn update(&mut self, _: &gloo::worker::WorkerScope<Self>, _: Self::Message) {
-        log!("Update");
-    }
+    fn update(&mut self, _: &gloo::worker::WorkerScope<Self>, _: Self::Message) {}
 
     fn received(
         &mut self,
@@ -78,7 +77,6 @@ impl gloo::worker::Worker for Worker {
         state: Self::Input,
         id: gloo::worker::HandlerId,
     ) {
-        let data: Vec<u16> = vec![0; state.window_x as usize * state.window_y as usize];
         type Complex = na::Complex<f64>;
 
         let ratio = state.window_y / state.window_x;
@@ -91,31 +89,59 @@ impl gloo::worker::Worker for Worker {
         };
 
         let data_size = state.window_x as usize * state.window_y as usize;
+        let mut max: u16 = 0;
+        let counts: Vec<u16> = (0..data_size)
+            .map(offset)
+            .map(|c| {
+                let mut z = Complex::new(0.0, 0.0);
+                let count = (0..state.steps)
+                    .take_while(|_| {
+                        let f = Complex::new(z.re.abs(), z.im.abs());
+                        z = f * f + c;
+                        (z.re * z.re + z.im * z.im) < state.divergence_threshold
+                    })
+                    .count() as u16;
+                max = max.max(count);
+                count
+            })
+            .collect();
+        let mut hist = vec![0; max as usize + 1];
+        let mut total = 0;
+        for &c in &counts {
+            hist[c as usize] += 1;
+        }
 
-        let mut max = u16::MIN;
-        let mut min = u16::MAX;
+        if self.prev_hist.len() != hist.len() {
+            self.prev_hist = hist.clone();
+        }
 
-        let data = (0..data_size).map(offset).map(|c| {
-            let mut z = Complex::new(0.0, 0.0);
-            let count = (0..state.steps)
-                .take_while(|_| {
-                    let f = Complex::new(z.re.abs(), z.im.abs());
-                    z = f * f + c;
-                    (z.re * z.re + z.im * z.im) < state.divergence_threshold
-                })
-                .count() as u16;
+        for (h, p) in hist.iter_mut().zip(self.prev_hist.iter()) {
+            *h = (*h + p) / 2;
+        }
 
-            max = max.max(count);
-            min = min.max(count);
-            count
-        });
+        for &h in &hist {
+            total += h;
+        }
+
+        let data: Vec<u8> = counts
+            .iter()
+            .enumerate()
+            .map(|(i, &count)| {
+                (255.0
+                    * (0..=count)
+                        .map(|i| hist[i as usize] as f64 / total as f64)
+                        .sum::<f64>())
+                .round() as u8
+            })
+            .collect();
+
+        self.prev_hist = hist.clone();
 
         scope.respond(
             id,
             RenderResponse {
-                data: data.collect(),
-                min: min,
-                max: max,
+                data: data,
+                hist: hist,
                 window_x: state.window_x as usize,
                 window_y: state.window_y as usize,
             },
@@ -148,7 +174,7 @@ fn get_viewbox() -> Option<AABox> {
 
 pub struct App {
     request: RenderRequest,
-    data: String,
+    image: Option<image::ImageBuffer<image::Luma<u8>, Vec<u8>>>,
 
     resize_listener: Option<EventListener>,
     bridge: gloo::worker::WorkerBridge<Worker>,
@@ -158,6 +184,7 @@ pub enum Msg {
     Resize,
     Update(ControlState),
     SetImage(RenderResponse),
+    Query((usize, usize)),
 }
 
 impl Component for App {
@@ -180,21 +207,19 @@ impl Component for App {
             scale: 0.1789,
             window_x: window_size[0],
             window_y: window_size[1],
-            steps: 8,
+            steps: 32,
             divergence_threshold: 10.0,
         };
 
         Self {
             request: request,
-            data: String::new(),
+            image: None,
             resize_listener: None,
             bridge: spawner.spawn("worker.js"),
         }
     }
 
     fn update(&mut self, ctx: &Context<Self>, msg: Msg) -> bool {
-        log!("Update app.");
-
         match msg {
             Self::Message::Resize => {
                 let window_size = get_window_size()
@@ -202,7 +227,6 @@ impl Component for App {
                     .cast::<f64>();
                 self.request.window_x = window_size[0];
                 self.request.window_y = window_size[1];
-                self.request.steps = 16;
                 self.bridge.send(self.request.clone());
                 false
             }
@@ -210,29 +234,31 @@ impl Component for App {
                 self.request.center_x = msg.x;
                 self.request.center_y = msg.y;
                 self.request.scale = msg.scale;
-                self.request.steps = 16;
                 self.bridge.send(self.request.clone());
                 false
             }
             Self::Message::SetImage(msg) => {
-                if self.request.steps < 64 {
-                    self.request.steps = self.request.steps.saturating_mul(2);
-                    self.bridge.send(self.request.clone());
-                }
+                log!("Hist: {:?}", msg.hist);
+                //if msg.hist[(0.75 * msg.hist.len() as f64) as usize] == 0 {
+                //    log!("New steps: {}", self.request.steps * 2);
+                //    self.request.steps *= 2;
+                //    self.bridge.send(self.request.clone());
+                //}
 
-                let range = (msg.max - msg.min) as f32;
-                let mut img =
-                    image::GrayImage::from_fn(msg.window_x as u32, msg.window_y as u32, |y, x| {
-                        let count = msg.data[rindex(x as usize, y as usize, msg.window_x as usize)];
-                        let scaled = 255.0 * ((count - msg.min) as f32 / range);
-                        image::Luma([scaled as u8])
-                    });
-
-                let mut buf = std::io::Cursor::new(Vec::new());
-                img.write_to(&mut buf, image::ImageOutputFormat::Png)
-                    .unwrap();
-                self.data = base64::encode(&buf.into_inner());
+                self.image = image::ImageBuffer::from_vec(
+                    msg.window_x as u32,
+                    msg.window_y as u32,
+                    msg.data,
+                );
                 true
+            }
+            Self::Message::Query((x, y)) => {
+                let px = self
+                    .image
+                    .as_ref()
+                    .map(|img| img.get_pixel(x as u32, y as u32).0[0]);
+                log!("x: {} y: {} px: {}", x, y, px.unwrap_or(0));
+                false
             }
         }
     }
@@ -243,12 +269,25 @@ impl Component for App {
 
         let style_string = format!("width:{}px;height:{}px", window_size[0], window_size[1]);
 
+        let data = self.image.as_ref().map(|image| {
+            let mut buf = std::io::Cursor::new(Vec::new());
+            image
+                .write_to(&mut buf, image::ImageOutputFormat::Png)
+                .unwrap();
+            base64::encode(&buf.into_inner())
+        });
+        let link = ctx.link();
+
         html! {
             <div id="container" style={style_string}>
-                if !self.data.is_empty() {
-                    <img src={format!("data:image/png;base64,{}", self.data)}/>
+                if data.is_some() {
+                    <img src={format!("data:image/png;base64,{}", data.unwrap())}
+                         onclick={link.callback(|e: MouseEvent| {
+                             Msg::Query((e.offset_x() as usize, e.offset_y() as usize))
+                         })}
+                    />
                 }
-                <ControlPanel callback={ctx.link().callback(|s| Msg::Update(s))} window={viewbox.dim}/>
+                <ControlPanel callback={link.callback(|s| Msg::Update(s))} window={viewbox.dim}/>
             </div>
         }
     }
