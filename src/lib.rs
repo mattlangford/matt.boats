@@ -245,16 +245,24 @@ impl Component for App {
                     self.step_size,
                     msg.hist
                 );
-                let p = |p| msg.hist[(p * steps as f64) as usize];
-                if p(0.1) != 0 {
-                    steps -= self.step_size.min(64);
-                } else if p(0.5) == 0 {
-                    steps += self.step_size.min(64);
+
+                let fill_count = msg.hist.iter().filter(|&h| *h != 0).count();
+                log!(
+                    "Fill Count: {} p_last: {}",
+                    fill_count,
+                    *msg.hist.last().unwrap() as f64 / msg.hist.iter().sum::<usize>() as f64
+                );
+                if fill_count < 64 {
+                    steps += self.step_size;
                 }
-                if steps < 500 && steps != self.request.steps {
+                if fill_count > 250 {
+                    steps -= self.step_size;
+                }
+
+                if steps != self.request.steps && steps > 32 && steps < 500 {
                     log!("step_size: {}", self.step_size);
-                    self.step_size *= 2;
-                    self.request.steps = steps.max(32);
+                    self.step_size = (self.step_size * 2).max(32);
+                    self.request.steps = steps;
                     self.bridge.send(self.request.clone());
                 }
 
