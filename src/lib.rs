@@ -257,19 +257,10 @@ impl Component for App {
                     .filter(|&h| *h > threshold)
                     .count();
 
-                log!(
-                    "Steps: {} (+{}) Filled: {} ({}) Hist: {:?}",
-                    steps,
-                    self.step_size,
-                    fill_count,
-                    threshold,
-                    msg.hist
-                );
-
                 if fill_count < 64 {
                     steps += self.step_size;
                 }
-                if fill_count > 250 {
+                if fill_count > 128 {
                     steps -= self.step_size;
                 }
 
