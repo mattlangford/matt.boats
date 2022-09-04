@@ -106,32 +106,23 @@ impl gloo::worker::Worker for Worker {
             })
             .collect();
         let mut hist = vec![0; max as usize + 1];
-        let mut total = 0;
         for &c in &counts {
             hist[c as usize] += 1;
         }
 
-        if self.prev_hist.len() != hist.len() {
-            self.prev_hist = hist.clone();
+        if self.prev_hist.len() == hist.len() {
+            for (h, p) in hist.iter_mut().zip(self.prev_hist.iter()) {
+                *h = (*h + p) / 2;
+            }
         }
 
-        for (h, p) in hist.iter_mut().zip(self.prev_hist.iter()) {
-            *h = (*h + p) / 2;
-        }
-
-        for &h in &hist {
-            total += h;
-        }
-
+        let inv_scale_total = 255.0 / (hist.iter().sum::<usize>() as f64);
         let data: Vec<u8> = counts
             .iter()
             .enumerate()
             .map(|(i, &count)| {
-                (255.0
-                    * (0..=count)
-                        .map(|i| hist[i as usize] as f64 / total as f64)
-                        .sum::<f64>())
-                .round() as u8
+                let integral = (0..=count as usize).map(|b| hist[b]).sum::<usize>() as f64;
+                (inv_scale_total * integral).round() as u8
             })
             .collect();
 
@@ -175,7 +166,7 @@ fn get_viewbox() -> Option<AABox> {
 pub struct App {
     request: RenderRequest,
     image: Option<image::ImageBuffer<image::Luma<u8>, Vec<u8>>>,
-
+    step_size: usize,
     resize_listener: Option<EventListener>,
     bridge: gloo::worker::WorkerBridge<Worker>,
 }
@@ -214,6 +205,7 @@ impl Component for App {
         Self {
             request: request,
             image: None,
+            step_size: 4,
             resize_listener: None,
             bridge: spawner.spawn("worker.js"),
         }
@@ -227,23 +219,44 @@ impl Component for App {
                     .cast::<f64>();
                 self.request.window_x = window_size[0];
                 self.request.window_y = window_size[1];
+                self.request.steps = 32;
                 self.bridge.send(self.request.clone());
+
+                self.step_size = 4;
                 false
             }
             Self::Message::Update(msg) => {
-                self.request.center_x = msg.x;
-                self.request.center_y = msg.y;
-                self.request.scale = msg.scale;
-                self.bridge.send(self.request.clone());
+                let r = &mut self.request;
+
+                r.center_x = msg.x;
+                r.center_y = msg.y;
+                r.scale = msg.scale;
+
+                self.step_size = 4;
+
+                self.bridge.send(r.clone());
                 false
             }
             Self::Message::SetImage(msg) => {
-                log!("Hist: {:?}", msg.hist);
-                //if msg.hist[(0.75 * msg.hist.len() as f64) as usize] == 0 {
-                //    log!("New steps: {}", self.request.steps * 2);
-                //    self.request.steps *= 2;
-                //    self.bridge.send(self.request.clone());
-                //}
+                let mut steps = self.request.steps;
+                log!(
+                    "Steps: {} (+{}) Hist: {:?}",
+                    self.request.steps,
+                    self.step_size,
+                    msg.hist
+                );
+                let p = |p| msg.hist[(p * steps as f64) as usize];
+                if p(0.1) != 0 {
+                    steps -= self.step_size.min(64);
+                } else if p(0.5) == 0 {
+                    steps += self.step_size.min(64);
+                }
+                if steps < 500 && steps != self.request.steps {
+                    log!("step_size: {}", self.step_size);
+                    self.step_size *= 2;
+                    self.request.steps = steps.max(32);
+                    self.bridge.send(self.request.clone());
+                }
 
                 self.image = image::ImageBuffer::from_vec(
                     msg.window_x as u32,
