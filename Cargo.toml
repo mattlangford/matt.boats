@@ -17,3 +17,6 @@ serde = "1.0.141"
 [dependencies.web-sys]
 version = "0.3.57"
 features = ["HtmlDocument", "KeyEvent", "HtmlButtonElement"]
+
+[profile.release]
+debug = true

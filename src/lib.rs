@@ -39,7 +39,7 @@ pub struct RenderRequest {
 }
 #[derive(Serialize, Deserialize)]
 pub struct RenderResponse {
-    data: Vec<u8>,
+    data: String,
     hist: Vec<usize>,
 
     window_x: usize,
@@ -128,10 +128,14 @@ impl gloo::worker::Worker for Worker {
 
         self.prev_hist = hist.clone();
 
+        let image = image::GrayImage::from_vec(state.window_x as u32, state.window_y as u32, data).expect("Unable to generate image.");
+        let mut buf = std::io::Cursor::new(Vec::new());
+        image.write_to(&mut buf, image::ImageOutputFormat::Png).expect("Unable to write image to buffer.");
+
         scope.respond(
             id,
             RenderResponse {
-                data: data,
+                data: base64::encode(&buf.into_inner()),
                 hist: hist,
                 window_x: state.window_x as usize,
                 window_y: state.window_y as usize,
@@ -165,7 +169,7 @@ fn get_viewbox() -> Option<AABox> {
 
 pub struct App {
     request: RenderRequest,
-    image: Option<image::ImageBuffer<image::Luma<u8>, Vec<u8>>>,
+    image: String,
     step_size: usize,
     resize_listener: Option<EventListener>,
     bridge: gloo::worker::WorkerBridge<Worker>,
@@ -213,7 +217,7 @@ impl Component for App {
 
         Self {
             request: request,
-            image: None,
+            image: String::new(),
             step_size: 4,
             resize_listener: None,
             bridge: bridge,
@@ -254,15 +258,14 @@ impl Component for App {
                     .skip(1)
                     .take_while(|&b| *b < threshold)
                     .count();
-                //log!(
-                //    "steps: {} (+{}), thresh: {}, lead: {}, trail: {}, hist: {:?}",
-                //    steps,
-                //    self.step_size,
-                //    threshold,
-                //    leading,
-                //    trailing,
-                //    msg.hist
-                //);
+                log!(
+                    "steps: {} (+{}), thresh: {}, lead: {}, trail: {}",
+                    steps,
+                    self.step_size,
+                    threshold,
+                    leading,
+                    trailing,
+                );
 
                 if trailing > self.step_size {
                     steps -= trailing;
@@ -273,25 +276,20 @@ impl Component for App {
                 if steps != r.steps && steps > 32 && steps <= 256 {
                     self.step_size = (self.step_size * 2).max(32);
                     r.steps = steps;
-                    //log!("Requesting with steps: {}", steps);
+                    log!("Requesting with steps: {}", steps);
                     self.bridge.send(r.clone());
                 } else {
                     self.step_size = 4;
                 }
 
-                self.image = image::ImageBuffer::from_vec(
-                    msg.window_x as u32,
-                    msg.window_y as u32,
-                    msg.data,
-                );
+                self.image = msg.data;
                 true
             }
             Self::Message::Query((x, y)) => {
-                let px = self
-                    .image
-                    .as_ref()
-                    .map(|img| img.get_pixel(x as u32, y as u32).0[0]);
-                log!("x: {} y: {} px: {}", x, y, px.unwrap_or(0));
+                //let px = self
+                //    .image
+                //    .map(|img| img.get_pixel(x as u32, y as u32).0[0]);
+                //log!("x: {} y: {} px: {}", x, y, px.unwrap_or(0));
                 false
             }
         }
@@ -303,19 +301,12 @@ impl Component for App {
 
         let style_string = format!("width:{}px;height:{}px", window_size[0], window_size[1]);
 
-        let data = self.image.as_ref().map(|image| {
-            let mut buf = std::io::Cursor::new(Vec::new());
-            image
-                .write_to(&mut buf, image::ImageOutputFormat::Png)
-                .unwrap();
-            base64::encode(&buf.into_inner())
-        });
         let link = ctx.link();
 
         html! {
             <div id="container" style={style_string}>
-                if data.is_some() {
-                    <img src={format!("data:image/png;base64,{}", data.unwrap())}
+                if !self.image.is_empty() {
+                    <img src={format!("data:image/png;base64,{}", self.image)}
                          onclick={link.callback(|e: MouseEvent| {
                              Msg::Query((e.offset_x() as usize, e.offset_y() as usize))
                          })}
