@@ -76,64 +76,13 @@
         }
 
 
-        .land {
-            fill: green;
-            stroke-linejoin: round;
-            stroke-width: 0.1%;
-            stroke: black;
-        }
-        .port {
-            fill: red;
-        }
-        .position {
-            fill: white;
-        }
-        .goal {
-            fill: green;
-        }
-        .path {
-            stroke: white;
-            stroke-width: 0.2%;
-        }
-        .solution {
-            stroke: lightgreen;
-            stroke-width: 0.4%;
-        }
-        .gridline {
-            fill: white;
-            fill-opacity: 0.0;
-            stroke: black;
-            stroke-width: 0.1%;
-        }
-        .gridline {
-            stroke: black;
-            stroke-width: 0.01%;
-        }
-        .outline {
-            fill: none;
-            stroke: red;
-            stroke-width: 0.5%;
-        }
-        .svgstyle {
-            display: block;
-            transform: scale(1,1);
-        }
-
-        .heavy {
-            font: bold 1000px sans-serif;
-        }
-
-        button {
-            touch-action: manipulation;
-        }
-
     </style>
     <title>Boats!</title>
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
     <link data-trunk rel="rust" href="Cargo.toml" data-bin="app" data-type="main"/>
-    <link data-trunk rel="rust" href="Cargo.toml" data-bin="worker" data-type="worker" data-keep-debug data-wasm-opt="0"/>
+    <!-- link data-trunk rel="rust" href="Cargo.toml" data-bin="worker" data-type="worker" data-keep-debug data-wasm-opt="0"/-->
 
   </head>
 </html>

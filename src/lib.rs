@@ -2,157 +2,15 @@
 
 mod components;
 mod geom;
-mod map;
 mod svg;
 mod utils;
 
-use components::*;
-use geom::*;
-use map::*;
 use utils::*;
+use geom::*;
 
-use gloo::events::EventListener;
-use wasm_bindgen::JsCast;
 use yew::prelude::*;
 
 use nalgebra as na;
-
-use rand::seq::SliceRandom;
-use rand::Rng;
-use rand::SeedableRng;
-
-use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
-
-#[derive(Serialize, Deserialize, Default, Clone, Debug)]
-pub struct RenderRequest {
-    timestamp_ms: i64,
-
-    center_x: f64,
-    center_y: f64,
-    scale: f64,
-
-    window_x: f64,
-    window_y: f64,
-
-    steps: usize,
-
-    divergence_threshold: f64,
-}
-#[derive(Serialize, Deserialize)]
-pub struct RenderResponse {
-    data: String,
-    hist: Vec<usize>,
-
-    window_x: usize,
-    window_y: usize,
-}
-
-pub struct Worker {
-    prev_hist: Vec<usize>,
-}
-
-fn index(i: usize, w_x: usize) -> (usize, usize) {
-    (i % w_x, i / w_x)
-}
-fn rindex(x: usize, y: usize, w_x: usize) -> usize {
-    x * w_x + y
-}
-
-impl gloo::worker::Worker for Worker {
-    type Message = ();
-    type Input = RenderRequest;
-    type Output = RenderResponse;
-
-    fn create(_: &gloo::worker::WorkerScope<Self>) -> Self {
-        log!("Creating worker.");
-        Worker {
-            prev_hist: Vec::new(),
-        }
-    }
-
-    fn update(&mut self, _: &gloo::worker::WorkerScope<Self>, _: Self::Message) {}
-
-    fn received(
-        &mut self,
-        scope: &gloo::worker::WorkerScope<Self>,
-        state: Self::Input,
-        id: gloo::worker::HandlerId,
-    ) {
-        const MAX_REQUEST_AGE_MS: i64 = 300;
-        if state.timestamp_ms < utils::now_ms() - MAX_REQUEST_AGE_MS {
-            return;
-        }
-
-        type Complex = na::Complex<f64>;
-
-        let ratio = state.window_y / state.window_x;
-        let offset = |i: usize| {
-            let (x, y) = index(i, state.window_x as usize);
-            Complex::new(
-                state.scale * (x as f64 / state.window_x as f64 - 0.5) + state.center_x,
-                state.scale * ratio * (y as f64 / state.window_y as f64 - 0.5) + state.center_y,
-            )
-        };
-
-        let data_size = state.window_x as usize * state.window_y as usize;
-        let mut max: u16 = 0;
-        let counts: Vec<u16> = (0..data_size)
-            .map(offset)
-            .map(|c| {
-                let mut z = Complex::new(0.0, 0.0);
-                let count = (0..state.steps)
-                    .take_while(|_| {
-                        let f = Complex::new(z.re.abs(), z.im.abs());
-                        z = f * f + c;
-                        (z.re * z.re + z.im * z.im) < state.divergence_threshold
-                    })
-                    .count() as u16;
-                max = max.max(count);
-                count
-            })
-            .collect();
-        let mut hist = vec![0; max as usize + 1];
-        for &c in &counts {
-            hist[c as usize] += 1;
-        }
-
-        if self.prev_hist.len() == hist.len() {
-            for (h, p) in hist.iter_mut().zip(self.prev_hist.iter()) {
-                *h = (*h + p) / 2;
-            }
-        }
-
-        let inv_scale_total = 255.0 / (hist.iter().sum::<usize>() as f64);
-        let data: Vec<u8> = counts
-            .iter()
-            .enumerate()
-            .map(|(i, &count)| {
-                let integral = (0..=count as usize).map(|b| hist[b]).sum::<usize>() as f64;
-                (inv_scale_total * integral).round() as u8
-            })
-            .collect();
-
-        self.prev_hist = hist.clone();
-
-        let image = image::GrayImage::from_vec(state.window_x as u32, state.window_y as u32, data)
-            .expect("Unable to generate image.");
-        let mut buf = std::io::Cursor::new(Vec::new());
-        image
-            .write_to(&mut buf, image::ImageOutputFormat::Png)
-            .expect("Unable to write image to buffer.");
-
-        scope.respond(
-            id,
-            RenderResponse {
-                data: base64::encode(&buf.into_inner()),
-                hist: hist,
-                window_x: state.window_x as usize,
-                window_y: state.window_y as usize,
-            },
-        );
-    }
-}
 
 fn get_window_size() -> Option<na::Vector2<f32>> {
     let window = web_sys::window().unwrap();
@@ -178,18 +36,9 @@ fn get_viewbox() -> Option<AABox> {
 }
 
 pub struct App {
-    request: RenderRequest,
-    image: String,
-    step_size: usize,
-    resize_listener: Option<EventListener>,
-    bridge: gloo::worker::WorkerBridge<Worker>,
 }
 
 pub enum Msg {
-    Resize,
-    Update(ControlState),
-    SetImage(RenderResponse),
-    Query((usize, usize)),
 }
 
 impl Component for App {
@@ -199,106 +48,11 @@ impl Component for App {
     fn create(ctx: &Context<Self>) -> Self {
         log!("Creating app.");
 
-        let mut spawner = <Worker as gloo::worker::Spawnable>::spawner();
-        let link = ctx.link().clone();
-        spawner.callback(move |resp| link.send_message(Self::Message::SetImage(resp)));
-
-        let window_size = get_window_size()
-            .expect("Unable to get window size.")
-            .cast::<f64>();
-
-        let mut request = RenderRequest {
-            timestamp_ms: utils::now_ms(),
-            center_x: -1.745,
-            center_y: -0.038,
-            scale: 0.1789,
-            window_x: window_size[0],
-            window_y: window_size[1],
-            steps: 32,
-            divergence_threshold: 10.0,
-        };
-
-        if window_size[1] > window_size[0] {
-            request.center_x = -1.8608;
-            request.center_y = -0.0035;
-            request.scale = 0.0058;
-        }
-        let bridge = spawner.spawn("worker.js");
-        bridge.send(request.clone());
-
-        Self {
-            request: request,
-            image: String::new(),
-            step_size: 4,
-            resize_listener: None,
-            bridge: bridge,
-        }
+        Self {}
     }
 
     fn update(&mut self, ctx: &Context<Self>, msg: Msg) -> bool {
-        let r = &mut self.request;
-        match msg {
-            Self::Message::Resize => {
-                let window_size = get_window_size()
-                    .expect("Unable to get window size.")
-                    .cast::<f64>();
-                r.timestamp_ms = utils::now_ms();
-                r.window_x = window_size[0];
-                r.window_y = window_size[1];
-
-                self.bridge.send(r.clone());
-                false
-            }
-            Self::Message::Update(msg) => {
-                r.timestamp_ms = utils::now_ms();
-                r.center_x = msg.x;
-                r.center_y = msg.y;
-                r.scale = msg.scale;
-
-                self.bridge.send(r.clone());
-                false
-            }
-            Self::Message::SetImage(msg) => {
-                let mut steps = r.steps;
-
-                let threshold =
-                    (0.25 * msg.hist.iter().sum::<usize>() as f64 / msg.hist.len() as f64) as usize;
-                let leading = msg.hist.iter().take_while(|&b| *b < threshold).count();
-                let trailing = msg
-                    .hist
-                    .iter()
-                    .rev()
-                    .skip(1)
-                    .take_while(|&b| *b < threshold)
-                    .count();
-
-                if trailing > self.step_size {
-                    steps -= trailing;
-                } else if steps - leading < 32 {
-                    steps += self.step_size;
-                }
-
-                if steps != r.steps && steps > 32 && steps <= 256 {
-                    self.step_size = (self.step_size * 2).max(32);
-                    r.timestamp_ms = utils::now_ms();
-                    r.steps = steps;
-                    log!("Requesting with steps: {}", steps);
-                    self.bridge.send(r.clone());
-                } else {
-                    self.step_size = 4;
-                }
-
-                self.image = msg.data;
-                true
-            }
-            Self::Message::Query((x, y)) => {
-                //let px = self
-                //    .image
-                //    .map(|img| img.get_pixel(x as u32, y as u32).0[0]);
-                //log!("x: {} y: {} px: {}", x, y, px.unwrap_or(0));
-                false
-            }
-        }
+        false
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
@@ -311,35 +65,7 @@ impl Component for App {
 
         html! {
             <div id="container" style={style_string}>
-                if !self.image.is_empty() {
-                    <img src={format!("data:image/png;base64,{}", self.image)}
-                         onclick={link.callback(|e: MouseEvent| {
-                             Msg::Query((e.offset_x() as usize, e.offset_y() as usize))
-                         })}
-                    />
-                }
-                <ControlPanel
-                    callback={link.callback(|s| Msg::Update(s))}
-                    window={viewbox.dim}
-                    x={self.request.center_x}
-                    y={self.request.center_y}
-                    scale={self.request.scale}
-                />
             </div>
         }
-    }
-
-    fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
-        if !first_render {
-            return;
-        }
-
-        let link = ctx.link();
-        let window = web_sys::window().unwrap();
-        let resize = ctx.link().callback(|_| Self::Message::Resize);
-        let listener = EventListener::new(&window, "resize", move |event| {
-            resize.emit(());
-        });
-        self.resize_listener.replace(listener);
     }
 }
