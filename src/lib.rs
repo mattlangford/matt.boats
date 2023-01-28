@@ -44,15 +44,28 @@ struct Circle {
 }
 
 impl Circle {
-    fn new(center: geom::Vec2f) -> Circle {
-        const MAX_RADIUS: f32 = 45.0;
+    const MAX_RADIUS: f32 = 45.0;
 
+    fn new(center: geom::Vec2f) -> Circle {
         let mut rng = rand::thread_rng();
         let depth = rng.gen::<f32>();
         Circle {
-            circle: geom::Circle::new(center, (1.0 - depth) * MAX_RADIUS),
+            circle: geom::Circle::new(center, (1.0 - depth) * Self::MAX_RADIUS),
             depth: depth,
-            rgb: [rng.gen(), rng.gen(), rng.gen()],
+            rgb: rng.gen(),
+        }
+    }
+    fn new_outside(viewport: &geom::AABox) -> Circle {
+        let mut rng = rand::thread_rng();
+        let depth = rng.gen::<f32>() * 0.75 + 0.25;
+        let radius = (1.0 - depth) * Self::MAX_RADIUS;
+        let x = viewport.bottom_right().x + radius;
+        let y = HEIGHT * 2.0 * (rng.gen::<f32>() - 0.5);
+
+        Circle {
+            circle: geom::Circle::new(Vec2f::new(x, y), radius),
+            depth: depth,
+            rgb: rng.gen(),
         }
     }
 
@@ -60,8 +73,8 @@ impl Circle {
         let alpha = 1.0 - 0.5 * self.depth;
         let rgb = [
             (alpha * self.rgb[0] as f32) as u8,
-            (alpha * self.rgb[1] as f32) as u8,
-            (alpha * self.rgb[2] as f32) as u8,
+            (alpha * self.rgb[0] as f32) as u8,
+            (alpha * self.rgb[0] as f32) as u8,
         ];
         svg::CircleProps::from_circle(&self.circle).with_fill(rgb)
     }
@@ -74,12 +87,14 @@ impl Circle {
 }
 
 pub struct App {
-    _update_handle: Interval,
+    _frame_update_handle: Interval,
+    _spawn_update_handle: Interval,
     circles: Vec<Circle>,
 }
 
 pub enum Msg {
     Update(f32),
+    Spawn(),
 }
 
 impl Component for App {
@@ -91,19 +106,24 @@ impl Component for App {
 
         let viewbox = get_viewbox().expect("Unable to load viewbox.");
 
-        let mut circles = geom::generate_random_points(10, &viewbox.top_left(), &viewbox.bottom_right())
-            .iter()
-            .map(|&pt| Circle::new(pt))
-            .collect::<Vec<Circle>>();
+        let mut circles =
+            geom::generate_random_points(10, &viewbox.top_left(), &viewbox.bottom_right())
+                .iter()
+                .map(|&pt| Circle::new(pt))
+                .collect::<Vec<Circle>>();
         circles.sort_by_key(|c| (1E3 * (1.0 - c.depth)) as u32);
 
         Self {
-            _update_handle: {
+            _frame_update_handle: {
                 let link = ctx.link().clone();
                 let fps = 24;
                 Interval::new(1000 / fps, move || {
                     link.send_message(Msg::Update(1.0 / fps as f32))
                 })
+            },
+            _spawn_update_handle: {
+                let link = ctx.link().clone();
+                Interval::new(2000, move || link.send_message(Msg::Spawn()))
             },
             circles: circles,
         }
@@ -114,12 +134,25 @@ impl Component for App {
         match msg {
             Self::Message::Update(dt) => {
                 self.circles.iter_mut().for_each(|c| c.update(dt));
-                for circle in &self.circles {
-                    if geom::circle_fully_outside_aabox(&circle.circle, &viewbox) {
-                        log!("Circle went outside!");
-                    }
+                let preretain = self.circles.len();
+                self.circles
+                    .retain(|c| !geom::circle_fully_outside_aabox(&c.circle, &viewbox));
+                if self.circles.len() != preretain {
+                    log!(
+                        "{} circles went over the line.",
+                        preretain - self.circles.len()
+                    );
                 }
                 true
+            }
+            Self::Message::Spawn() => {
+                self.circles.push(Circle::new_outside(&viewbox));
+                log!(
+                    "Spawning new circle at depth {}",
+                    self.circles.last().unwrap().depth
+                );
+                self.circles.sort_by_key(|c| (1E3 * (1.0 - c.depth)) as u32);
+                false
             }
         }
     }
@@ -131,12 +164,8 @@ impl Component for App {
         let style_string = format!("width:{}px;height:{}px", window_size[0], window_size[1]);
         let viewbox_string = format!(
             "{} {} {} {}",
-            viewbox.start[0],
-            viewbox.start[1],
-            viewbox.dim[0],
-            viewbox.dim[1]
+            viewbox.start[0], viewbox.start[1], viewbox.dim[0], viewbox.dim[1]
         );
-
 
         let link = ctx.link();
 

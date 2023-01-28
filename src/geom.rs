@@ -138,7 +138,7 @@ impl Circle {
     pub fn new(center: Vec2f, radius: f32) -> Circle {
         Circle {
             center: center,
-            radius: radius
+            radius: radius,
         }
     }
 }
@@ -183,7 +183,10 @@ pub fn aabox_are_adjacent(lhs: &AABox, rhs: &AABox) -> bool {
 pub fn circle_fully_outside_aabox(c: &Circle, b: &AABox) -> bool {
     let start = b.start;
     let end = start + b.dim;
-    let pt = Vec2f::new(c.center[0].min(end[0]).max(b.start[0]), c.center[1].min(end[1]).max(b.start[1]));
+    let pt = Vec2f::new(
+        c.center[0].min(end[0]).max(b.start[0]),
+        c.center[1].min(end[1]).max(b.start[1]),
+    );
 
     (c.center - pt).norm() > c.radius
 }
