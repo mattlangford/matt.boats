@@ -26,6 +26,8 @@ use std::collections::HashSet;
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct RenderRequest {
+    timestamp_ms: i64,
+
     center_x: f64,
     center_y: f64,
     scale: f64,
@@ -77,6 +79,11 @@ impl gloo::worker::Worker for Worker {
         state: Self::Input,
         id: gloo::worker::HandlerId,
     ) {
+        const MAX_REQUEST_AGE_MS: i64 = 300;
+        if state.timestamp_ms < utils::now_ms() - MAX_REQUEST_AGE_MS {
+            return;
+        }
+
         type Complex = na::Complex<f64>;
 
         let ratio = state.window_y / state.window_x;
@@ -128,9 +135,12 @@ impl gloo::worker::Worker for Worker {
 
         self.prev_hist = hist.clone();
 
-        let image = image::GrayImage::from_vec(state.window_x as u32, state.window_y as u32, data).expect("Unable to generate image.");
+        let image = image::GrayImage::from_vec(state.window_x as u32, state.window_y as u32, data)
+            .expect("Unable to generate image.");
         let mut buf = std::io::Cursor::new(Vec::new());
-        image.write_to(&mut buf, image::ImageOutputFormat::Png).expect("Unable to write image to buffer.");
+        image
+            .write_to(&mut buf, image::ImageOutputFormat::Png)
+            .expect("Unable to write image to buffer.");
 
         scope.respond(
             id,
@@ -198,6 +208,7 @@ impl Component for App {
             .cast::<f64>();
 
         let mut request = RenderRequest {
+            timestamp_ms: utils::now_ms(),
             center_x: -1.745,
             center_y: -0.038,
             scale: 0.1789,
@@ -231,6 +242,7 @@ impl Component for App {
                 let window_size = get_window_size()
                     .expect("Unable to get window size.")
                     .cast::<f64>();
+                r.timestamp_ms = utils::now_ms();
                 r.window_x = window_size[0];
                 r.window_y = window_size[1];
 
@@ -238,6 +250,7 @@ impl Component for App {
                 false
             }
             Self::Message::Update(msg) => {
+                r.timestamp_ms = utils::now_ms();
                 r.center_x = msg.x;
                 r.center_y = msg.y;
                 r.scale = msg.scale;
@@ -258,14 +271,6 @@ impl Component for App {
                     .skip(1)
                     .take_while(|&b| *b < threshold)
                     .count();
-                log!(
-                    "steps: {} (+{}), thresh: {}, lead: {}, trail: {}",
-                    steps,
-                    self.step_size,
-                    threshold,
-                    leading,
-                    trailing,
-                );
 
                 if trailing > self.step_size {
                     steps -= trailing;
@@ -275,6 +280,7 @@ impl Component for App {
 
                 if steps != r.steps && steps > 32 && steps <= 256 {
                     self.step_size = (self.step_size * 2).max(32);
+                    r.timestamp_ms = utils::now_ms();
                     r.steps = steps;
                     log!("Requesting with steps: {}", steps);
                     self.bridge.send(r.clone());
