@@ -1,6 +1,8 @@
 #![allow(unused_macros)]
 #![allow(dead_code)]
 
+use chrono::{DateTime, Local};
+
 // Dish out to gloo::console since it doesn't format the inputs.
 macro_rules! log {
     ($($arg:tt)+) => (
@@ -61,4 +63,8 @@ pub fn median<T: std::cmp::PartialOrd + Copy>(mut d: Vec<T>) -> T {
         }
     });
     d[d.len() / 2]
+}
+
+pub fn now_ms() -> i64 {
+    Local::now().timestamp_millis()
 }

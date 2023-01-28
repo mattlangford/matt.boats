@@ -1,3 +1,4 @@
+use crate::utils::log;
 use gloo::events::EventListener;
 use wasm_bindgen::JsCast;
 use yew::prelude::*;
