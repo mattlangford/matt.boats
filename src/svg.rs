@@ -103,6 +103,10 @@ pub struct CircleProps {
     pub radius: f32,
     #[prop_or_default]
     pub class: Option<String>,
+    #[prop_or_default]
+    pub fill: Option<[u8; 3]>,
+    #[prop_or_default]
+    pub alpha: Option<f32>,
 }
 
 impl CircleProps {
@@ -112,18 +116,43 @@ impl CircleProps {
             y: pt[1],
             radius: r,
             class: None,
+            fill: None,
+            alpha: None,
         }
+    }
+    pub fn from_circle(circle: &geom::Circle) -> Self {
+        Self::new(circle.center, circle.radius)
     }
 
     pub fn with_class(mut self, class: &str) -> Self {
         self.class = Some(String::from(class));
         self
     }
+
+    pub fn with_fill(mut self, fill: [u8; 3]) -> Self {
+        self.fill = Some(fill);
+        self
+    }
+    pub fn with_fill_and_alpha(mut self, fill: [u8; 3], alpha: f32) -> Self {
+        self.fill = Some(fill);
+        self.alpha = Some(alpha);
+        self
+    }
 }
 
 #[function_component(Circle)]
 pub fn circle(props: &CircleProps) -> Html {
+    let alpha = props.alpha.unwrap_or(1.0);
+    let fill = props.fill.map_or(String::new(), |[r, g, b]| {
+        format!("rgba({}, {}, {}, {})", r, g, b, alpha)
+    });
     html! {
-        <line cx={s(props.x)} cy={s(props.y)} r={s(props.radius)} class={props.class.clone().unwrap_or_default()}/>
+        <circle
+            cx={s(props.x)}
+            cy={s(props.y)}
+            r={s(props.radius)}
+            class={props.class.clone().unwrap_or_default()}
+            fill={fill.clone()}
+        />
     }
 }

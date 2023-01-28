@@ -20,6 +20,12 @@ pub struct AABox {
     pub dim: Vec2f,
 }
 
+#[derive(Debug, Default)]
+pub struct Circle {
+    pub center: Vec2f,
+    pub radius: f32,
+}
+
 impl Line {
     pub fn new_segment(start: Vec2f, end: Vec2f) -> Line {
         let diff = end - start;
@@ -85,6 +91,9 @@ impl AABox {
     pub fn top_left(&self) -> Vec2f {
         self.start
     }
+    pub fn bottom_right(&self) -> Vec2f {
+        self.start + self.dim
+    }
 
     pub fn center(&self) -> Vec2f {
         self.start + 0.5 * self.dim
@@ -125,6 +134,15 @@ impl AABox {
     }
 }
 
+impl Circle {
+    pub fn new(center: Vec2f, radius: f32) -> Circle {
+        Circle {
+            center: center,
+            radius: radius
+        }
+    }
+}
+
 pub fn aabox_are_adjacent(lhs: &AABox, rhs: &AABox) -> bool {
     const TOL: f32 = 1E-3;
 
@@ -160,6 +178,14 @@ pub fn aabox_are_adjacent(lhs: &AABox, rhs: &AABox) -> bool {
         && range_union(&lhs_y_range, &rhs_y_range))
         || ((eq(lhs_y_range.0, rhs_y_range.1) || eq(lhs_y_range.1, rhs_y_range.0))
             && range_union(&lhs_x_range, &rhs_x_range))
+}
+
+pub fn circle_fully_outside_aabox(c: &Circle, b: &AABox) -> bool {
+    let start = b.start;
+    let end = start + b.dim;
+    let pt = Vec2f::new(c.center[0].min(end[0]).max(b.start[0]), c.center[1].min(end[1]).max(b.start[1]));
+
+    (c.center - pt).norm() > c.radius
 }
 
 pub fn intersect_segment(l: &Line, start: &Vec2f, end: &Vec2f) -> Option<Vec2f> {
@@ -246,6 +272,28 @@ mod tests {
         assert_true!(aabox_are_adjacent(
             &lhs,
             &AABox::new_square(Vec2f::new(0.1, -1.0), 1.0)
+        ));
+    }
+
+    #[test]
+    fn test_circle_output_aabox() {
+        let aabox = AABox::new_square(Vec2f::new(0.0, 0.0), 1.0);
+
+        assert_false!(circle_fully_outside_aabox(
+            &Circle::new(Vec2f::new(0.0, 0.0), 1.0),
+            &aabox
+        ));
+        assert_false!(circle_fully_outside_aabox(
+            &Circle::new(Vec2f::new(0.1, 0.1), 1.0),
+            &aabox
+        ));
+        assert_false!(circle_fully_outside_aabox(
+            &Circle::new(Vec2f::new(-0.1, 0.1), 1.0),
+            &aabox
+        ));
+        assert_true!(circle_fully_outside_aabox(
+            &Circle::new(Vec2f::new(-0.1, 0.1), 0.05),
+            &aabox
         ));
     }
 
