@@ -102,11 +102,13 @@ pub struct CircleProps {
     pub y: f32,
     pub radius: f32,
     #[prop_or_default]
-    pub class: Option<String>,
+    pub class: String,
+    #[prop_or([255, 255, 255])]
+    pub fill: [u8; 3],
+    #[prop_or(1.0)]
+    pub alpha: f32,
     #[prop_or_default]
-    pub fill: Option<[u8; 3]>,
-    #[prop_or_default]
-    pub alpha: Option<f32>,
+    pub filter: String,
 }
 
 impl CircleProps {
@@ -115,9 +117,10 @@ impl CircleProps {
             x: pt[0],
             y: pt[1],
             radius: r,
-            class: None,
-            fill: None,
-            alpha: None,
+            class: String::new(),
+            fill: [0, 0, 0],
+            alpha: 1.0,
+            filter: String::new()
         }
     }
     pub fn from_circle(circle: &geom::Circle) -> Self {
@@ -125,34 +128,36 @@ impl CircleProps {
     }
 
     pub fn with_class(mut self, class: &str) -> Self {
-        self.class = Some(String::from(class));
+        self.class = String::from(class);
         self
     }
 
     pub fn with_fill(mut self, fill: [u8; 3]) -> Self {
-        self.fill = Some(fill);
+        self.fill = fill;
         self
     }
-    pub fn with_fill_and_alpha(mut self, fill: [u8; 3], alpha: f32) -> Self {
-        self.fill = Some(fill);
-        self.alpha = Some(alpha);
+    pub fn with_alpha(mut self, alpha: f32) -> Self {
+        self.alpha = alpha;
+        self
+    }
+    pub fn with_filter(mut self, filter: &str) -> Self {
+        self.filter = String::from(filter);
         self
     }
 }
 
 #[function_component(Circle)]
 pub fn circle(props: &CircleProps) -> Html {
-    let alpha = props.alpha.unwrap_or(1.0);
-    let fill = props.fill.map_or(String::new(), |[r, g, b]| {
-        format!("rgba({}, {}, {}, {})", r, g, b, alpha)
-    });
+    let [r, g, b] = props.fill;
+    let fill = format!("rgba({}, {}, {}, {})", r, g, b, (255.0 * props.alpha) as u8);
     html! {
         <circle
             cx={s(props.x)}
             cy={s(props.y)}
             r={s(props.radius)}
-            class={props.class.clone().unwrap_or_default()}
-            fill={fill.clone()}
+            class={props.class.clone()}
+            fill={fill}
+            filter={props.filter.clone()}
         />
     }
 }

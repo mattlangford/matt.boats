@@ -44,11 +44,19 @@ struct Circle {
 }
 
 impl Circle {
-    const MAX_RADIUS: f32 = 45.0;
+    const MAX_RADIUS: f32 = 5.0;
+
+    fn new_depth() -> f32 {
+        let mut rng = rand::thread_rng();
+        // Zero is close, One is far
+        let max_range = 0.8;
+        let min_range = 0.1;
+        rng.gen::<f32>() * (max_range - min_range) + min_range
+    }
 
     fn new(center: geom::Vec2f) -> Circle {
         let mut rng = rand::thread_rng();
-        let depth = rng.gen::<f32>();
+        let depth = Circle::new_depth();
         Circle {
             circle: geom::Circle::new(center, (1.0 - depth) * Self::MAX_RADIUS),
             depth: depth,
@@ -57,7 +65,7 @@ impl Circle {
     }
     fn new_outside(viewport: &geom::AABox) -> Circle {
         let mut rng = rand::thread_rng();
-        let depth = rng.gen::<f32>() * 0.75 + 0.25;
+        let depth = Circle::new_depth();
         let radius = (1.0 - depth) * Self::MAX_RADIUS;
         let x = viewport.bottom_right().x + radius;
         let y = HEIGHT * 2.0 * (rng.gen::<f32>() - 0.5);
@@ -70,18 +78,20 @@ impl Circle {
     }
 
     fn to_props(&self) -> svg::CircleProps {
-        let alpha = 1.0 - 0.5 * self.depth;
+        let grey = 1.0 - 0.8 * self.depth;
         let rgb = [
-            (alpha * self.rgb[0] as f32) as u8,
-            (alpha * self.rgb[0] as f32) as u8,
-            (alpha * self.rgb[0] as f32) as u8,
+            (255.0 * grey) as u8,
+            (255.0 * grey) as u8,
+            (255.0 * grey) as u8,
         ];
         svg::CircleProps::from_circle(&self.circle).with_fill(rgb)
     }
 
     fn update(&mut self, dt: f32) {
-        const PAN_RATE: f32 = 10.0;
-        let velocity = PAN_RATE * (1.0 - self.depth);
+        let mut rng = rand::thread_rng();
+        let max_rate = 40.0;
+        let min_rate = 30.0;
+        let velocity = (1.0 - self.depth) * (max_rate - min_rate) + min_rate;
         self.circle.center[0] -= dt * velocity;
     }
 }
@@ -90,6 +100,7 @@ pub struct App {
     _frame_update_handle: Interval,
     _spawn_update_handle: Interval,
     circles: Vec<Circle>,
+    size: usize
 }
 
 pub enum Msg {
@@ -106,12 +117,12 @@ impl Component for App {
 
         let viewbox = get_viewbox().expect("Unable to load viewbox.");
 
-        let mut circles =
-            geom::generate_random_points(10, &viewbox.top_left(), &viewbox.bottom_right())
-                .iter()
-                .map(|&pt| Circle::new(pt))
-                .collect::<Vec<Circle>>();
-        circles.sort_by_key(|c| (1E3 * (1.0 - c.depth)) as u32);
+        //let mut circles =
+        //    geom::generate_random_points(1000, &viewbox.top_left(), &viewbox.bottom_right())
+        //        .iter()
+        //        .map(|&pt| Circle::new(pt))
+        //        .collect::<Vec<Circle>>();
+        //circles.sort_by_key(|c| (1E3 * (1.0 - c.depth)) as u32);
 
         Self {
             _frame_update_handle: {
@@ -123,9 +134,12 @@ impl Component for App {
             },
             _spawn_update_handle: {
                 let link = ctx.link().clone();
-                Interval::new(2000, move || link.send_message(Msg::Spawn()))
+                Interval::new(1000, move || {
+                    link.send_message(Msg::Spawn())
+                })
             },
-            circles: circles,
+            size: 500,
+            circles: Vec::new(),
         }
     }
 
@@ -134,24 +148,17 @@ impl Component for App {
         match msg {
             Self::Message::Update(dt) => {
                 self.circles.iter_mut().for_each(|c| c.update(dt));
-                let preretain = self.circles.len();
                 self.circles
                     .retain(|c| !geom::circle_fully_outside_aabox(&c.circle, &viewbox));
-                if self.circles.len() != preretain {
-                    log!(
-                        "{} circles went over the line.",
-                        preretain - self.circles.len()
-                    );
-                }
                 true
             }
             Self::Message::Spawn() => {
-                self.circles.push(Circle::new_outside(&viewbox));
-                log!(
-                    "Spawning new circle at depth {}",
-                    self.circles.last().unwrap().depth
-                );
+                for i in 0..self.size {
+                    self.circles.push(Circle::new_outside(&viewbox));
+                }
+
                 self.circles.sort_by_key(|c| (1E3 * (1.0 - c.depth)) as u32);
+                log!("{} svgs", self.circles.len());
                 false
             }
         }
@@ -171,8 +178,8 @@ impl Component for App {
 
         html! {
             <div id="container" style={style_string}>
-                <svg width="100%" height="100%" viewBox={viewbox_string} preserveAspectRatio="none" class="svgstyle">
-                    { for self.circles.iter().map(|c| { html! { <svg::Circle ..c.to_props()/> } }) }
+                <svg width="100%" height="100%" viewBox={viewbox_string} preserveAspectRatio="none">
+                { for self.circles.iter().map(|c| { html! { <svg::Circle ..c.to_props()/> } }) }
                 </svg>
             </div>
         }
