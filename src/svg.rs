@@ -17,7 +17,11 @@ pub struct LineProps {
     pub x2: f32,
     pub y2: f32,
     #[prop_or_default]
-    pub class: Option<String>,
+    pub class: String,
+    #[prop_or(String::from("white"))]
+    pub stroke: String,
+    #[prop_or(0.1)]
+    pub stroke_width: f32,
 }
 
 impl LineProps {
@@ -29,12 +33,18 @@ impl LineProps {
             y1: start[1],
             x2: end[0],
             y2: end[1],
-            class: None,
+            class: String::from(""),
+            stroke: String::from("white"),
+            stroke_width: 0.1,
         }
     }
 
     pub fn with_class(mut self, class: &str) -> Self {
-        self.class = Some(String::from(class));
+        self.class = String::from(class);
+        self
+    }
+    pub fn with_stroke(mut self, stroke: &str) -> Self {
+        self.stroke = String::from(stroke);
         self
     }
 }
@@ -43,7 +53,7 @@ impl LineProps {
 pub fn line(props: &LineProps) -> Html {
     html! {
         <line x1={s(props.x1)} x2={s(props.x2)} y1={s(props.y1)} y2={s(props.y2)}
-              class={props.class.clone().unwrap_or_default()}/>
+              class={props.class.clone()} stroke={props.stroke.clone()} stroke-width={s(props.stroke_width)}/>
     }
 }
 

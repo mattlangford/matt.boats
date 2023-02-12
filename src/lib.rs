@@ -38,75 +38,15 @@ fn get_viewbox() -> Option<AABox> {
     })
 }
 
-struct Circle {
-    circle: geom::Circle,
-    depth: f32,
-    rgb: [u8; 3],
-}
-
-impl Circle {
-    const MAX_RADIUS: f32 = 5.0;
-
-    fn new_depth() -> f32 {
-        let mut rng = rand::thread_rng();
-        // Zero is close, One is far
-        let max_range = 0.8;
-        let min_range = 0.1;
-        rng.gen::<f32>() * (max_range - min_range) + min_range
-    }
-
-    fn new(center: geom::Vec2f) -> Circle {
-        let mut rng = rand::thread_rng();
-        let depth = Circle::new_depth();
-        Circle {
-            circle: geom::Circle::new(center, (1.0 - depth) * Self::MAX_RADIUS),
-            depth: depth,
-            rgb: rng.gen(),
-        }
-    }
-    fn new_outside(viewport: &geom::AABox) -> Circle {
-        let mut rng = rand::thread_rng();
-        let depth = Circle::new_depth();
-        let radius = (1.0 - depth) * Self::MAX_RADIUS;
-        let x = viewport.bottom_right().x + radius;
-        let y = HEIGHT * 2.0 * (rng.gen::<f32>() - 0.5);
-
-        Circle {
-            circle: geom::Circle::new(Vec2f::new(x, y), radius),
-            depth: depth,
-            rgb: rng.gen(),
-        }
-    }
-
-    fn to_props(&self) -> svg::CircleProps {
-        let grey = 1.0 - 0.8 * self.depth;
-        let rgb = [
-            (255.0 * grey) as u8,
-            (255.0 * grey) as u8,
-            (255.0 * grey) as u8,
-        ];
-        svg::CircleProps::from_circle(&self.circle).with_fill(rgb)
-    }
-
-    fn update(&mut self, dt: f32) {
-        let mut rng = rand::thread_rng();
-        let max_rate = 40.0;
-        let min_rate = 30.0;
-        let velocity = (1.0 - self.depth) * (max_rate - min_rate) + min_rate;
-        self.circle.center[0] -= dt * velocity;
-    }
-}
-
 pub struct App {
+    camera: model::Camera,
+    model: model::Model,
+
     _frame_update_handle: Interval,
-    _spawn_update_handle: Interval,
-    circles: Vec<Circle>,
-    size: usize,
 }
 
 pub enum Msg {
     Update(f32),
-    Spawn(),
 }
 
 impl Component for App {
@@ -116,54 +56,29 @@ impl Component for App {
     fn create(ctx: &Context<Self>) -> Self {
         log!("Creating app.");
 
-        let viewbox = get_viewbox().expect("Unable to load viewbox.");
-
-        //let mut circles =
-        //    geom::generate_random_points(1000, &viewbox.top_left(), &viewbox.bottom_right())
-        //        .iter()
-        //        .map(|&pt| Circle::new(pt))
-        //        .collect::<Vec<Circle>>();
-        //circles.sort_by_key(|c| (1E3 * (1.0 - c.depth)) as u32);
-
         Self {
+            camera: model::Camera::new(),
+            model: model::Model::load(),
             _frame_update_handle: {
                 let link = ctx.link().clone();
-                let fps = 24;
+                let fps = 10;
                 Interval::new(1000 / fps, move || {
                     link.send_message(Msg::Update(1.0 / fps as f32))
                 })
             },
-            _spawn_update_handle: {
-                let link = ctx.link().clone();
-                Interval::new(1000, move || link.send_message(Msg::Spawn()))
-            },
-            size: 500,
-            circles: Vec::new(),
         }
     }
 
-    fn update(&mut self, ctx: &Context<Self>, msg: Msg) -> bool {
-        let viewbox = get_viewbox().unwrap();
+    fn update(&mut self, _ctx: &Context<Self>, msg: Msg) -> bool {
         match msg {
-            Self::Message::Update(dt) => {
-                self.circles.iter_mut().for_each(|c| c.update(dt));
-                self.circles
-                    .retain(|c| !geom::circle_fully_outside_aabox(&c.circle, &viewbox));
+            Self::Message::Update(_dt) => {
+                self.camera.orbit(geom::Vec3f::new(0.0, 0.0, 0.0), 0.1, 0.0);
                 true
             }
-            Self::Message::Spawn() => {
-                for i in 0..self.size {
-                    self.circles.push(Circle::new_outside(&viewbox));
-                }
-
-                self.circles.sort_by_key(|c| (1E3 * (1.0 - c.depth)) as u32);
-                log!("{} svgs", self.circles.len());
-                false
-            }
         }
     }
 
-    fn view(&self, ctx: &Context<Self>) -> Html {
+    fn view(&self, _ctx: &Context<Self>) -> Html {
         let window_size = get_window_size().expect("Unable to get window size.");
         let viewbox = get_viewbox().unwrap();
 
@@ -173,12 +88,24 @@ impl Component for App {
             viewbox.start[0], viewbox.start[1], viewbox.dim[0], viewbox.dim[1]
         );
 
-        let link = ctx.link();
+        let projected = self.model.project(&self.camera);
 
         html! {
             <div id="container" style={style_string}>
                 <svg width="100%" height="100%" viewBox={viewbox_string} preserveAspectRatio="none">
-                { for self.circles.iter().map(|c| { html! { <svg::Circle ..c.to_props()/> } }) }
+                {
+                    for projected.points.iter()
+                        .map(|pt| { html! { <svg::Circle x={pt.x} y={pt.y} radius=0.5/> } })
+                }
+                {
+                    for projected.faces.iter().map(|f| { html! {
+                        <>
+                            <svg::Line x1={f.a.x} y1={f.a.y} x2={f.b.x} y2={f.b.y} />
+                            <svg::Line x1={f.b.x} y1={f.b.y} x2={f.c.x} y2={f.c.y} />
+                            <svg::Line x1={f.c.x} y1={f.c.y} x2={f.a.x} y2={f.a.y} />
+                        </>
+                    }})
+                }
                 </svg>
             </div>
         }

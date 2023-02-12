@@ -1,42 +1,43 @@
 use crate::geom;
 use crate::utils::assert_true;
+use crate::utils::log;
 
 use nalgebra as na;
 
 use tobj;
 
-const MODEL: &[u8] = include_bytes!("/Users/mattlangford/Downloads/ball.obj");
-const MATERIAL: &[u8] = include_bytes!("/Users/mattlangford/Downloads/ball.mtl");
+const MODEL: &[u8] = include_bytes!("/Users/mattlangford/Downloads/box.obj");
+const MATERIAL: &[u8] = include_bytes!("/Users/mattlangford/Downloads/box.mtl");
 
 // TODO: make these references?
-struct Face2d {
-    a: geom::Vec2f,
-    b: geom::Vec2f,
-    c: geom::Vec2f,
+pub struct Face2d {
+    pub a: geom::Vec2f,
+    pub b: geom::Vec2f,
+    pub c: geom::Vec2f,
 }
 
-struct ProjectedModel {
-    points: Vec<geom::Vec2f>,
-    faces: Vec<Face2d>,
+pub struct ProjectedModel {
+    pub points: Vec<geom::Vec2f>,
+    pub faces: Vec<Face2d>,
 }
 
 #[derive(Debug)]
-struct Camera {
+pub struct Camera {
     world_from_camera: na::Transform3<f32>,
     focal_length: f32,
 }
 
 impl Camera {
-    fn new() -> Camera {
+    pub fn new() -> Camera {
         let dir = geom::Vec3f::new(1.0, 0.0, 0.0);
         let up = -geom::Vec3f::z();
         let rotation = na::Rotation3::face_towards(&dir, &up);
 
-        let shift = geom::Vec3f::new(-10.0, 0.0, 0.0);
+        let shift = geom::Vec3f::new(-5.0, 0.0, 0.0);
         let translation = na::Translation3::<f32>::from(shift);
         Camera {
             world_from_camera: na::Transform3::identity() * translation * rotation,
-            focal_length: 10.0,
+            focal_length: 35.0,
         }
     }
 
@@ -46,17 +47,38 @@ impl Camera {
     fn camera_matrix(&self) -> na::Matrix3x4<f32> {
         na::Matrix3x4::from_partial_diagonal(&[self.focal_length, self.focal_length, 1.0])
     }
+
+    pub fn position(&self) -> geom::Vec3f {
+        self.world_from_camera.matrix().column(3).xyz()
+    }
+    pub fn orbit(&mut self, pt: geom::Vec3f, _dx: f32, _dy: f32) {
+        let r = (self.position() - pt).norm();
+
+        let dcamera = geom::Vec3f::new(dx, dy, 0.0);
+        let dworld = self.world_from_camera * dcamera;
+
+        let new_position = (self.position() + dworld).normalize() * r;
+
+        let dir = pt - new_position;
+        let up = -geom::Vec3f::z();
+
+        let rotation = na::Rotation3::face_towards(&dir, &up);
+        let translation = na::Translation3::<f32>::from(new_position);
+
+        self.world_from_camera = na::Transform3::identity() * translation * rotation;
+    }
 }
 
-struct Model {
+pub struct Model {
     mesh: tobj::Mesh,
 }
 
 impl Model {
-    fn load() -> Model {
-        let (models, materials) =
-            tobj::load_obj_buf(&mut MODEL, &tobj::LoadOptions::default(), |_| {
-                tobj::load_mtl_buf(&mut MATERIAL)
+    pub fn load() -> Model {
+        let mut model = MODEL.clone();
+        let (models, _materials) =
+            tobj::load_obj_buf(&mut model, &tobj::LoadOptions::default(), move |_| {
+                tobj::load_mtl_buf(&mut MATERIAL.clone())
             })
             .expect("Unable to load mesh.");
         let mesh = models
@@ -64,15 +86,10 @@ impl Model {
             .expect("No meshes defined in obj file.")
             .mesh
             .clone();
-        assert!(
-            mesh.face_arities.is_empty(),
-            "Mesh doesn't appear to be made of triangles."
-        );
-
         Model { mesh: mesh }
     }
 
-    fn project(&self, camera: &Camera) -> ProjectedModel {
+    pub fn project(&self, camera: &Camera) -> ProjectedModel {
         let camera_from_world = camera.camera_from_world();
         let projection = camera.camera_matrix() * camera_from_world.matrix();
 
@@ -84,15 +101,15 @@ impl Model {
             faces: Vec::with_capacity(index.len() / 3),
         };
         output.points = (0..pts.len() / 3)
-            .map(|i| na::vector!(pts[i], pts[i + 1], pts[i + 2], 1.0))
+            .map(|i| na::vector!(pts[3 * i], pts[3 * i + 1], pts[3 * i + 2], 1.0))
             .map(|pt| projection * pt)
             .map(|pt| (pt / pt.z).xy())
             .collect();
         output.faces = (0..index.len() / 3)
             .map(|i| Face2d {
-                a: output.points[index[i] as usize],
-                b: output.points[index[i + 1] as usize],
-                c: output.points[index[i + 2] as usize],
+                a: output.points[index[3 * i] as usize],
+                b: output.points[index[3 * i + 1] as usize],
+                c: output.points[index[3 * i + 2] as usize],
             })
             .collect();
         output
