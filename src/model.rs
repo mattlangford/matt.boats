@@ -6,8 +6,8 @@ use nalgebra as na;
 
 use tobj;
 
-const MODEL: &[u8] = include_bytes!("/Users/mattlangford/Downloads/box.obj");
-const MATERIAL: &[u8] = include_bytes!("/Users/mattlangford/Downloads/box.mtl");
+const MODEL: &[u8] = include_bytes!("/Users/mattlangford/Downloads/ball.obj");
+const MATERIAL: &[u8] = include_bytes!("/Users/mattlangford/Downloads/ball.mtl");
 
 // TODO: make these references?
 pub struct Face2d {
@@ -33,7 +33,7 @@ impl Camera {
         let up = -geom::Vec3f::z();
         let rotation = na::Rotation3::face_towards(&dir, &up);
 
-        let shift = geom::Vec3f::new(-5.0, 0.0, 0.0);
+        let shift = geom::Vec3f::new(-2.0, 0.0, 0.0);
         let translation = na::Translation3::<f32>::from(shift);
         Camera {
             world_from_camera: na::Transform3::identity() * translation * rotation,
@@ -48,19 +48,31 @@ impl Camera {
         na::Matrix3x4::from_partial_diagonal(&[self.focal_length, self.focal_length, 1.0])
     }
 
+    pub fn rotation(&self) -> na::Rotation3<f32> {
+        let mat: na::Matrix3<f32> = From::from(
+            self.world_from_camera
+                .matrix()
+                .fixed_rows::<3>(0)
+                .fixed_columns::<3>(0),
+        );
+        na::Rotation3::from_matrix(&mat)
+    }
     pub fn position(&self) -> geom::Vec3f {
         self.world_from_camera.matrix().column(3).xyz()
     }
-    pub fn orbit(&mut self, pt: geom::Vec3f, _dx: f32, _dy: f32) {
+    pub fn orbit(&mut self, pt: geom::Vec3f, dx: f32, dy: f32) {
         let r = (self.position() - pt).norm();
 
         let dcamera = geom::Vec3f::new(dx, dy, 0.0);
         let dworld = self.world_from_camera * dcamera;
 
+        let camera_up = geom::Vec3f::new(0.0, 1.0, 0.0);
+        let world_up = self.world_from_camera.transform_vector(&camera_up);
+
         let new_position = (self.position() + dworld).normalize() * r;
 
         let dir = pt - new_position;
-        let up = -geom::Vec3f::z();
+        let up = world_up;
 
         let rotation = na::Rotation3::face_towards(&dir, &up);
         let translation = na::Translation3::<f32>::from(new_position);
@@ -81,11 +93,22 @@ impl Model {
                 tobj::load_mtl_buf(&mut MATERIAL.clone())
             })
             .expect("Unable to load mesh.");
-        let mesh = models
+        let mut mesh = models
             .first()
             .expect("No meshes defined in obj file.")
             .mesh
             .clone();
+
+        let points = mesh.positions.len() / 3;
+        let center_x = mesh.positions.iter().step_by(3).sum::<f32>() / points as f32;
+        let center_y = mesh.positions.iter().skip(1).step_by(3).sum::<f32>() / points as f32;
+        let center_z = mesh.positions.iter().skip(2).step_by(3).sum::<f32>() / points as f32;
+        for i in 0..points {
+            mesh.positions[3 * i] -= center_x;
+            mesh.positions[3 * i + 1] -= center_y;
+            mesh.positions[3 * i + 2] -= center_z;
+        }
+
         Model { mesh: mesh }
     }
 
@@ -148,5 +171,19 @@ mod tests {
         let projected = model.project(&camera);
         assert_true!(projected.points.len() > 0);
         assert_true!(projected.faces.len() > 0);
+    }
+
+    #[test]
+    fn test_orbit() {
+        let mut camera = Camera::new();
+
+        let camera_up = geom::Vec3f::new(0.0, -1.0, 0.0);
+
+        let before = camera.world_from_camera * camera_up;
+        camera.orbit(geom::Vec3f::new(0.0, 0.0, 0.0), 0.1, 1.0);
+        let after = camera.world_from_camera * camera_up;
+
+        println!("before: {:?}, after: {:?}", before, after);
+        assert_true!(before.dot(&after) > 0.9);
     }
 }

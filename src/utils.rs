@@ -4,9 +4,16 @@
 use chrono::{DateTime, Local};
 
 // Dish out to gloo::console since it doesn't format the inputs.
+#[cfg(target_family = "wasm")]
 macro_rules! log {
     ($($arg:tt)+) => (
         gloo::console::log!(format!($($arg)+));
+    );
+}
+#[cfg(target_family = "unix")]
+macro_rules! log {
+    ($($arg:tt)+) => (
+        println!($($arg)+);
     );
 }
 

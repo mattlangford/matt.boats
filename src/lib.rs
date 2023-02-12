@@ -71,8 +71,9 @@ impl Component for App {
 
     fn update(&mut self, _ctx: &Context<Self>, msg: Msg) -> bool {
         match msg {
-            Self::Message::Update(_dt) => {
-                self.camera.orbit(geom::Vec3f::new(0.0, 0.0, 0.0), 0.1, 0.0);
+            Self::Message::Update(dt) => {
+                self.camera
+                    .orbit(geom::Vec3f::new(0.0, 0.0, 0.0), dt, dt / 2.0);
                 true
             }
         }
