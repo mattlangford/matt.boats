@@ -15,6 +15,7 @@ base64 = "0.13.0"
 serde = "1.0.141"
 chrono = "0.4.23"
 tobj = "3.2.4"
+itertools = "0.8"
 
 [dependencies.web-sys]
 version = "0.3.57"

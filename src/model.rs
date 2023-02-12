@@ -1,6 +1,7 @@
 use crate::geom;
 use crate::utils::assert_true;
 use crate::utils::log;
+use itertools::izip;
 
 use nalgebra as na;
 
@@ -60,29 +61,12 @@ impl Camera {
     pub fn position(&self) -> geom::Vec3f {
         self.world_from_camera.matrix().column(3).xyz()
     }
-    pub fn orbit(&mut self, pt: geom::Vec3f, dx: f32, dy: f32) {
-        let r = (self.position() - pt).norm();
-
-        let dcamera = geom::Vec3f::new(dx, dy, 0.0);
-        let dworld = self.world_from_camera * dcamera;
-
-        let camera_up = geom::Vec3f::new(0.0, 1.0, 0.0);
-        let world_up = self.world_from_camera.transform_vector(&camera_up);
-
-        let new_position = (self.position() + dworld).normalize() * r;
-
-        let dir = pt - new_position;
-        let up = world_up;
-
-        let rotation = na::Rotation3::face_towards(&dir, &up);
-        let translation = na::Translation3::<f32>::from(new_position);
-
-        self.world_from_camera = na::Transform3::identity() * translation * rotation;
-    }
 }
 
 pub struct Model {
     mesh: tobj::Mesh,
+    points: Vec<geom::Vec3f>,
+    pub world_from_model: na::Transform3<f32>,
 }
 
 impl Model {
@@ -99,43 +83,67 @@ impl Model {
             .mesh
             .clone();
 
-        let points = mesh.positions.len() / 3;
-        let center_x = mesh.positions.iter().step_by(3).sum::<f32>() / points as f32;
-        let center_y = mesh.positions.iter().skip(1).step_by(3).sum::<f32>() / points as f32;
-        let center_z = mesh.positions.iter().skip(2).step_by(3).sum::<f32>() / points as f32;
-        for i in 0..points {
-            mesh.positions[3 * i] -= center_x;
-            mesh.positions[3 * i + 1] -= center_y;
-            mesh.positions[3 * i + 2] -= center_z;
+        let x_it = mesh.positions.iter().step_by(3);
+        let y_it = mesh.positions.iter().skip(1).step_by(3);
+        let z_it = mesh.positions.iter().skip(2).step_by(3);
+        let points: Vec<geom::Vec3f> = izip!(x_it, y_it, z_it)
+            .map(|(&x, &y, &z)| geom::Vec3f::new(x, y, z))
+            .collect();
+
+        let mut center = geom::Vec3f::new(0.0, 0.0, 0.0);
+        let normalization = 1.0 / points.len() as f32;
+        for pt in &points {
+            center += normalization * pt;
         }
 
-        Model { mesh: mesh }
+        Model {
+            mesh: mesh,
+            points: points,
+            world_from_model: na::Transform3::identity() * na::Translation3::from(center),
+        }
+    }
+
+    fn model_from_world(&self) -> na::Transform3<f32> {
+        self.world_from_model.try_inverse().unwrap()
     }
 
     pub fn project(&self, camera: &Camera) -> ProjectedModel {
+        let model_from_world = self.model_from_world();
         let camera_from_world = camera.camera_from_world();
-        let projection = camera.camera_matrix() * camera_from_world.matrix();
+        let projection = camera.camera_matrix() * (camera_from_world * model_from_world).matrix();
 
-        let pts = &self.mesh.positions;
         let index = &self.mesh.indices;
 
-        let mut output = ProjectedModel {
-            points: Vec::with_capacity(pts.len() / 3),
-            faces: Vec::with_capacity(index.len() / 3),
-        };
-        output.points = (0..pts.len() / 3)
-            .map(|i| na::vector!(pts[3 * i], pts[3 * i + 1], pts[3 * i + 2], 1.0))
+        let points3d: Vec<geom::Vec3f> = self
+            .points
+            .iter()
+            .map(|pt| na::vector!(pt.x, pt.y, pt.z, 1.0))
             .map(|pt| projection * pt)
-            .map(|pt| (pt / pt.z).xy())
             .collect();
-        output.faces = (0..index.len() / 3)
-            .map(|i| Face2d {
-                a: output.points[index[3 * i] as usize],
-                b: output.points[index[3 * i + 1] as usize],
-                c: output.points[index[3 * i + 2] as usize],
+
+        let mut faces3d: Vec<[geom::Vec3f; 3]> = (0..index.len() / 3)
+            .map(|i| {
+                [
+                    points3d[index[3 * i] as usize],
+                    points3d[index[3 * i + 1] as usize],
+                    points3d[index[3 * i + 2] as usize],
+                ]
             })
+            .filter(|[a, b, c]| a.z > 0.0 && b.z > 0.0 && c.z > 0.0) // negative z is forward? hmm
             .collect();
-        output
+        faces3d.sort_by_key(|[a, b, c]| (a.z.min(b.z).min(c.z) * 1E5) as u32);
+
+        ProjectedModel {
+            points: points3d.iter().map(|pt| (pt / pt.z).xy()).collect(),
+            faces: faces3d
+                .iter()
+                .map(|[a, b, c]| Face2d {
+                    a: a.xy(),
+                    b: b.xy(),
+                    c: c.xy(),
+                })
+                .collect(),
+        }
     }
 }
 
@@ -171,19 +179,5 @@ mod tests {
         let projected = model.project(&camera);
         assert_true!(projected.points.len() > 0);
         assert_true!(projected.faces.len() > 0);
-    }
-
-    #[test]
-    fn test_orbit() {
-        let mut camera = Camera::new();
-
-        let camera_up = geom::Vec3f::new(0.0, -1.0, 0.0);
-
-        let before = camera.world_from_camera * camera_up;
-        camera.orbit(geom::Vec3f::new(0.0, 0.0, 0.0), 0.1, 1.0);
-        let after = camera.world_from_camera * camera_up;
-
-        println!("before: {:?}, after: {:?}", before, after);
-        assert_true!(before.dot(&after) > 0.9);
     }
 }

@@ -61,7 +61,7 @@ impl Component for App {
             model: model::Model::load(),
             _frame_update_handle: {
                 let link = ctx.link().clone();
-                let fps = 10;
+                let fps = 15;
                 Interval::new(1000 / fps, move || {
                     link.send_message(Msg::Update(1.0 / fps as f32))
                 })
@@ -72,8 +72,8 @@ impl Component for App {
     fn update(&mut self, _ctx: &Context<Self>, msg: Msg) -> bool {
         match msg {
             Self::Message::Update(dt) => {
-                self.camera
-                    .orbit(geom::Vec3f::new(0.0, 0.0, 0.0), dt, dt / 2.0);
+                self.model.world_from_model *=
+                    na::Rotation3::<f32>::from_euler_angles(0.1 * dt, 0.5 * dt, dt);
                 true
             }
         }
@@ -100,11 +100,8 @@ impl Component for App {
                 }
                 {
                     for projected.faces.iter().map(|f| { html! {
-                        <>
-                            <svg::Line x1={f.a.x} y1={f.a.y} x2={f.b.x} y2={f.b.y} />
-                            <svg::Line x1={f.b.x} y1={f.b.y} x2={f.c.x} y2={f.c.y} />
-                            <svg::Line x1={f.c.x} y1={f.c.y} x2={f.a.x} y2={f.a.y} />
-                        </>
+                        <polygon points={format!("{},{} {},{} {}, {}", f.a.x, f.a.y, f.b.x, f.b.y, f.c.x, f.c.y)}
+                                 fill="black" stroke="white" stroke-width=0.1/>
                     }})
                 }
                 </svg>
