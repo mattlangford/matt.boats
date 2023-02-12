@@ -73,7 +73,7 @@ impl Component for App {
         match msg {
             Self::Message::Update(dt) => {
                 self.model.world_from_model *=
-                    na::Rotation3::<f32>::from_euler_angles(0.1 * dt, 0.5 * dt, dt);
+                    na::Rotation3::<f32>::from_euler_angles(0.2 * dt, 0.1 * dt, dt);
                 true
             }
         }
@@ -95,12 +95,9 @@ impl Component for App {
             <div id="container" style={style_string}>
                 <svg width="100%" height="100%" viewBox={viewbox_string} preserveAspectRatio="none">
                 {
-                    for projected.points.iter()
-                        .map(|pt| { html! { <svg::Circle x={pt.x} y={pt.y} radius=0.5/> } })
-                }
-                {
-                    for projected.faces.iter().map(|f| { html! {
-                        <polygon points={format!("{},{} {},{} {}, {}", f.a.x, f.a.y, f.b.x, f.b.y, f.c.x, f.c.y)}
+                    for projected.faces.iter().rev().map(|f| { html! {
+                        <polygon points={format!("{:.3},{:.3} {:.3},{:.3} {:.3},{:.3}",
+                                                 f.a.x, f.a.y, f.b.x, f.b.y, f.c.x, f.c.y)}
                                  fill="black" stroke="white" stroke-width=0.1/>
                     }})
                 }

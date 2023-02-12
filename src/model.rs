@@ -34,7 +34,7 @@ impl Camera {
         let up = -geom::Vec3f::z();
         let rotation = na::Rotation3::face_towards(&dir, &up);
 
-        let shift = geom::Vec3f::new(-2.0, 0.0, 0.0);
+        let shift = geom::Vec3f::new(-3.0, 0.0, 0.0);
         let translation = na::Translation3::<f32>::from(shift);
         Camera {
             world_from_camera: na::Transform3::identity() * translation * rotation,
@@ -77,7 +77,7 @@ impl Model {
                 tobj::load_mtl_buf(&mut MATERIAL.clone())
             })
             .expect("Unable to load mesh.");
-        let mut mesh = models
+        let mesh = models
             .first()
             .expect("No meshes defined in obj file.")
             .mesh
@@ -112,8 +112,6 @@ impl Model {
         let camera_from_world = camera.camera_from_world();
         let projection = camera.camera_matrix() * (camera_from_world * model_from_world).matrix();
 
-        let index = &self.mesh.indices;
-
         let points3d: Vec<geom::Vec3f> = self
             .points
             .iter()
@@ -121,26 +119,27 @@ impl Model {
             .map(|pt| projection * pt)
             .collect();
 
-        let mut faces3d: Vec<[geom::Vec3f; 3]> = (0..index.len() / 3)
-            .map(|i| {
-                [
-                    points3d[index[3 * i] as usize],
-                    points3d[index[3 * i + 1] as usize],
-                    points3d[index[3 * i + 2] as usize],
-                ]
-            })
-            .filter(|[a, b, c]| a.z > 0.0 && b.z > 0.0 && c.z > 0.0) // negative z is forward? hmm
+        let a_it = self.mesh.indices.iter().step_by(3);
+        let b_it = self.mesh.indices.iter().skip(1).step_by(3);
+        let c_it = self.mesh.indices.iter().skip(2).step_by(3);
+        let mut faces3d: Vec<[geom::Vec3f; 3]> = izip!(a_it, b_it, c_it)
+            .map(|(&a, &b, &c)| [points3d[a as usize], points3d[b as usize], points3d[c as usize]])
+            .filter(|[a, b, c]| a.z > 0.0 && b.z > 0.0 && c.z > 0.0)
             .collect();
-        faces3d.sort_by_key(|[a, b, c]| (a.z.min(b.z).min(c.z) * 1E5) as u32);
+
+        faces3d.sort_by_key(|[a, b, c]| {
+            let dist = a.z.min(b.z).min(c.z);
+            (1E3 * dist) as u32
+        });
 
         ProjectedModel {
-            points: points3d.iter().map(|pt| (pt / pt.z).xy()).collect(),
+            points: points3d.iter().map(|pt| pt.xy() / pt.z).collect(),
             faces: faces3d
                 .iter()
                 .map(|[a, b, c]| Face2d {
-                    a: a.xy(),
-                    b: b.xy(),
-                    c: c.xy(),
+                    a: a.xy() / a.z,
+                    b: b.xy() / b.z,
+                    c: c.xy() / c.z,
                 })
                 .collect(),
         }
