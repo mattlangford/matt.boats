@@ -120,7 +120,7 @@ impl CircleProps {
             class: String::new(),
             fill: [0, 0, 0],
             alpha: 1.0,
-            filter: String::new()
+            filter: String::new(),
         }
     }
     pub fn from_circle(circle: &geom::Circle) -> Self {

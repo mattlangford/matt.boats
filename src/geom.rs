@@ -6,6 +6,8 @@ use rand::distributions::Distribution;
 
 pub type Vec2f = na::Vector2<f32>;
 pub type Vec2d = na::Vector2<f64>;
+pub type Vec3f = na::Vector3<f32>;
+pub type Vec3d = na::Vector3<f64>;
 
 #[derive(Debug, Default)]
 pub struct Line {

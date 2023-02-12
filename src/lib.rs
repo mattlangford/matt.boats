@@ -2,6 +2,7 @@
 
 mod components;
 mod geom;
+mod model;
 mod svg;
 mod utils;
 
@@ -100,7 +101,7 @@ pub struct App {
     _frame_update_handle: Interval,
     _spawn_update_handle: Interval,
     circles: Vec<Circle>,
-    size: usize
+    size: usize,
 }
 
 pub enum Msg {
@@ -134,9 +135,7 @@ impl Component for App {
             },
             _spawn_update_handle: {
                 let link = ctx.link().clone();
-                Interval::new(1000, move || {
-                    link.send_message(Msg::Spawn())
-                })
+                Interval::new(1000, move || link.send_message(Msg::Spawn()))
             },
             size: 500,
             circles: Vec::new(),
