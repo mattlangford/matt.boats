@@ -38,14 +38,25 @@ fn get_viewbox() -> Option<AABox> {
     })
 }
 
+struct MouseDrag {
+    start: (i32, i32),
+    current: (i32, i32),
+}
+
 pub struct App {
     camera: model::Camera,
     model: model::Model,
+
+    drag: Option<MouseDrag>,
+    momentum: geom::Vec2f,
 
     _frame_update_handle: Interval,
 }
 
 pub enum Msg {
+    MouseDown((i32, i32)),
+    MouseMove((i32, i32)),
+    MouseUp,
     Update(f32),
 }
 
@@ -59,9 +70,11 @@ impl Component for App {
         Self {
             camera: model::Camera::new(),
             model: model::Model::load(),
+            drag: None,
+            momentum: geom::Vec2f::new(0.0, 0.0),
             _frame_update_handle: {
                 let link = ctx.link().clone();
-                let fps = 15;
+                let fps = 24;
                 Interval::new(1000 / fps, move || {
                     link.send_message(Msg::Update(1.0 / fps as f32))
                 })
@@ -72,14 +85,44 @@ impl Component for App {
     fn update(&mut self, _ctx: &Context<Self>, msg: Msg) -> bool {
         match msg {
             Self::Message::Update(dt) => {
-                self.model.world_from_model *=
-                    na::Rotation3::<f32>::from_euler_angles(0.2 * dt, 0.1 * dt, dt);
-                true
+                if let Some(drag) = &mut self.drag {
+                    let dx = drag.current.0 - drag.start.0;
+                    let dy = drag.current.1 - drag.start.1;
+
+                    self.momentum += geom::Vec2f::new(dx as f32, dy as f32);
+
+                    drag.start = drag.current;
+                }
+
+                self.momentum *= 0.0375 / dt;
+
+                if self.momentum.norm() > 1.0 {
+                    let pitch = 1E-3 * self.momentum.y;
+                    let yaw = -1E-3 * self.momentum.x;
+                    self.model
+                        .rotate(na::Rotation3::<f32>::from_euler_angles(0.0, pitch, yaw));
+                }
+                return true;
+            }
+            Self::Message::MouseDown((x, y)) => {
+                self.drag = Some(MouseDrag {
+                    start: (x, y),
+                    current: (x, y),
+                });
+            }
+            Self::Message::MouseMove((x, y)) => {
+                if let Some(drag) = &mut self.drag {
+                    drag.current = (x, y);
+                }
+            }
+            Self::Message::MouseUp => {
+                self.drag = None;
             }
         }
+        return false;
     }
 
-    fn view(&self, _ctx: &Context<Self>) -> Html {
+    fn view(&self, ctx: &Context<Self>) -> Html {
         let window_size = get_window_size().expect("Unable to get window size.");
         let viewbox = get_viewbox().unwrap();
 
@@ -91,8 +134,26 @@ impl Component for App {
 
         let projected = self.model.project(&self.camera);
 
+        let onmousedown = ctx.link().callback(|event: MouseEvent| {
+            Self::Message::MouseDown((event.client_x(), event.client_y()))
+        });
+        let onmousemove = ctx.link().callback(|event: MouseEvent| {
+            Self::Message::MouseMove((event.client_x(), event.client_y()))
+        });
+        let onmouseup = ctx.link().callback(|_: MouseEvent| Self::Message::MouseUp);
+        let onmouseout = ctx.link().batch_callback(move |event: MouseEvent| {
+            if event.client_x() < 0
+                || event.client_y() < 0
+                || event.client_x() >= window_size.x as i32
+                || event.client_y() >= window_size.y as i32
+            {
+                return Some(Self::Message::MouseUp);
+            }
+            None
+        });
+
         html! {
-            <div id="container" style={style_string}>
+            <div id="container" style={style_string} {onmousedown} {onmousemove} {onmouseup} {onmouseout}>
                 <svg width="100%" height="100%" viewBox={viewbox_string} preserveAspectRatio="none">
                 {
                     for projected.faces.iter().rev().map(|f| { html! {

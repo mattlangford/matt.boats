@@ -34,7 +34,7 @@ impl Camera {
         let up = -geom::Vec3f::z();
         let rotation = na::Rotation3::face_towards(&dir, &up);
 
-        let shift = geom::Vec3f::new(-3.0, 0.0, 0.0);
+        let shift = geom::Vec3f::new(-1.5, 0.0, 0.0);
         let translation = na::Translation3::<f32>::from(shift);
         Camera {
             world_from_camera: na::Transform3::identity() * translation * rotation,
@@ -66,7 +66,7 @@ impl Camera {
 pub struct Model {
     mesh: tobj::Mesh,
     points: Vec<geom::Vec3f>,
-    pub world_from_model: na::Transform3<f32>,
+    world_from_model: na::Transform3<f32>,
 }
 
 impl Model {
@@ -107,6 +107,10 @@ impl Model {
         self.world_from_model.try_inverse().unwrap()
     }
 
+    pub fn rotate(&mut self, dr: na::Rotation3<f32>) {
+        self.world_from_model *= dr;
+    }
+
     pub fn project(&self, camera: &Camera) -> ProjectedModel {
         let model_from_world = self.model_from_world();
         let camera_from_world = camera.camera_from_world();
@@ -123,7 +127,13 @@ impl Model {
         let b_it = self.mesh.indices.iter().skip(1).step_by(3);
         let c_it = self.mesh.indices.iter().skip(2).step_by(3);
         let mut faces3d: Vec<[geom::Vec3f; 3]> = izip!(a_it, b_it, c_it)
-            .map(|(&a, &b, &c)| [points3d[a as usize], points3d[b as usize], points3d[c as usize]])
+            .map(|(&a, &b, &c)| {
+                [
+                    points3d[a as usize],
+                    points3d[b as usize],
+                    points3d[c as usize],
+                ]
+            })
             .filter(|[a, b, c]| a.z > 0.0 && b.z > 0.0 && c.z > 0.0)
             .collect();
 
