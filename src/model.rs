@@ -7,8 +7,8 @@ use nalgebra as na;
 
 use tobj;
 
-const MODEL: &[u8] = include_bytes!("/Users/mattlangford/Downloads/ball.obj");
-const MATERIAL: &[u8] = include_bytes!("/Users/mattlangford/Downloads/ball.mtl");
+const MODEL: &[u8] = include_bytes!("/Users/mattlangford/Downloads/boat.obj");
+const MATERIAL: &[u8] = include_bytes!("/Users/mattlangford/Downloads/boat.mtl");
 
 // TODO: make these references?
 pub struct Face2d {
@@ -24,8 +24,8 @@ pub struct ProjectedModel {
 
 #[derive(Debug)]
 pub struct Camera {
-    world_from_camera: na::Transform3<f32>,
-    focal_length: f32,
+    pub world_from_camera: na::Transform3<f32>,
+    pub focal_length: f32,
 }
 
 impl Camera {
@@ -34,11 +34,11 @@ impl Camera {
         let up = -geom::Vec3f::z();
         let rotation = na::Rotation3::face_towards(&dir, &up);
 
-        let shift = geom::Vec3f::new(-1.5, 0.0, 0.0);
+        let shift = geom::Vec3f::new(-10.0, 0.0, 0.0);
         let translation = na::Translation3::<f32>::from(shift);
         Camera {
             world_from_camera: na::Transform3::identity() * translation * rotation,
-            focal_length: 35.0,
+            focal_length: 50.0,
         }
     }
 
@@ -96,10 +96,13 @@ impl Model {
             center += normalization * pt;
         }
 
+        // Picked to look nice
+        let rotation = na::Rotation3::<f32>::from_euler_angles(-1.026089, -0.95820314, -0.6794422);
+
         Model {
             mesh: mesh,
             points: points,
-            world_from_model: na::Transform3::identity() * na::Translation3::from(center),
+            world_from_model: na::Transform3::identity() * na::Translation3::from(center) * rotation,
         }
     }
 
@@ -109,6 +112,15 @@ impl Model {
 
     pub fn rotate(&mut self, dr: na::Rotation3<f32>) {
         self.world_from_model *= dr;
+    }
+    pub fn rotation(&self) -> na::Rotation3<f32> {
+        let mat: na::Matrix3<f32> = From::from(
+            self.world_from_model
+                .matrix()
+                .fixed_rows::<3>(0)
+                .fixed_columns::<3>(0),
+        );
+        na::Rotation3::from_matrix(&mat)
     }
 
     pub fn project(&self, camera: &Camera) -> ProjectedModel {

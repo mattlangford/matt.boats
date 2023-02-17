@@ -57,6 +57,7 @@ pub enum Msg {
     MouseDown((i32, i32)),
     MouseMove((i32, i32)),
     MouseUp,
+    Scroll(f32),
     Update(f32),
 }
 
@@ -101,6 +102,8 @@ impl Component for App {
                     let yaw = -1E-3 * self.momentum.x;
                     self.model
                         .rotate(na::Rotation3::<f32>::from_euler_angles(0.0, pitch, yaw));
+
+                    log!("rpy: {:?}", self.model.rotation().euler_angles());
                 }
                 return true;
             }
@@ -114,6 +117,9 @@ impl Component for App {
                 if let Some(drag) = &mut self.drag {
                     drag.current = (x, y);
                 }
+            }
+            Self::Message::Scroll(s) => {
+                self.camera.world_from_camera *= na::Translation3::<f32>::from(-1E-2 * s * geom::Vec3f::z());
             }
             Self::Message::MouseUp => {
                 self.drag = None;
@@ -135,6 +141,7 @@ impl Component for App {
         let projected = self.model.project(&self.camera);
 
         let onmousedown = ctx.link().callback(|event: MouseEvent| {
+            if event.which() == 3 { return Self::Message::MouseUp; } // right click
             Self::Message::MouseDown((event.client_x(), event.client_y()))
         });
         let onmousemove = ctx.link().callback(|event: MouseEvent| {
@@ -152,8 +159,12 @@ impl Component for App {
             None
         });
 
+        let onwheel = ctx.link().callback(|event: WheelEvent| {
+            Self::Message::Scroll(event.delta_y() as f32)
+        });
+
         html! {
-            <div id="container" style={style_string} {onmousedown} {onmousemove} {onmouseup} {onmouseout}>
+            <div id="container" style={style_string} {onmousedown} {onmousemove} {onmouseup} {onmouseout} {onwheel}>
                 <svg width="100%" height="100%" viewBox={viewbox_string} preserveAspectRatio="none">
                 {
                     for projected.faces.iter().rev().map(|f| { html! {
