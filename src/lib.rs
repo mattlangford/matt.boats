@@ -50,6 +50,8 @@ pub struct App {
     drag: Option<MouseDrag>,
     momentum: geom::Vec2f,
 
+    projected: model::ProjectedModel,
+
     _frame_update_handle: Interval,
 }
 
@@ -68,11 +70,15 @@ impl Component for App {
     fn create(ctx: &Context<Self>) -> Self {
         log!("Creating app.");
 
+        let camera =  model::Camera::new();
+        let model = model::Model::load();
+        let projected = model.project(&camera);
         Self {
-            camera: model::Camera::new(),
-            model: model::Model::load(),
+            camera: camera,
+            model: model,
             drag: None,
             momentum: geom::Vec2f::new(0.0, 0.0),
+            projected: projected,
             _frame_update_handle: {
                 let link = ctx.link().clone();
                 let fps = 24;
@@ -98,13 +104,14 @@ impl Component for App {
                 self.momentum *= 0.0375 / dt;
 
                 if self.momentum.norm() > 1.0 {
-                    let pitch = 1E-3 * self.momentum.y;
-                    let yaw = -1E-3 * self.momentum.x;
+                    let pitch = -1E-3 * self.momentum.y;
+                    let yaw = 1E-3 * self.momentum.x;
                     self.model
                         .rotate(na::Rotation3::<f32>::from_euler_angles(0.0, pitch, yaw));
 
-                    log!("rpy: {:?}", self.model.rotation().euler_angles());
+                    self.projected = self.model.project(&self.camera);
                 }
+
                 return true;
             }
             Self::Message::MouseDown((x, y)) => {
@@ -120,6 +127,9 @@ impl Component for App {
             }
             Self::Message::Scroll(s) => {
                 self.camera.world_from_camera *= na::Translation3::<f32>::from(-1E-2 * s * geom::Vec3f::z());
+                // TODO: Don't project here
+                self.projected = self.model.project(&self.camera);
+                return true;
             }
             Self::Message::MouseUp => {
                 self.drag = None;
@@ -137,8 +147,6 @@ impl Component for App {
             "{} {} {} {}",
             viewbox.start[0], viewbox.start[1], viewbox.dim[0], viewbox.dim[1]
         );
-
-        let projected = self.model.project(&self.camera);
 
         let onmousedown = ctx.link().callback(|event: MouseEvent| {
             if event.which() == 3 { return Self::Message::MouseUp; } // right click
@@ -167,10 +175,19 @@ impl Component for App {
             <div id="container" style={style_string} {onmousedown} {onmousemove} {onmouseup} {onmouseout} {onwheel}>
                 <svg width="100%" height="100%" viewBox={viewbox_string} preserveAspectRatio="none">
                 {
-                    for projected.faces.iter().rev().map(|f| { html! {
+                    for self.projected.faces.iter().rev().map(|f| { html! {
                         <polygon points={format!("{:.3},{:.3} {:.3},{:.3} {:.3},{:.3}",
                                                  f.a.x, f.a.y, f.b.x, f.b.y, f.c.x, f.c.y)}
                                  fill="black" stroke="white" stroke-width=0.1/>
+                    }})
+                }
+                {
+                    for self.projected.faces.iter().skip(5).take(1).map(|f| { html! {
+                        <>
+                            <svg::Circle x={f.a.x} y={f.a.y} radius=1.0 fill={[255, 255, 255]} />
+                            <svg::Circle x={f.b.x} y={f.b.y} radius=1.0 fill={[200, 200, 200]}/>
+                            <svg::Circle x={f.c.x} y={f.c.y} radius=1.0 fill={[100, 100, 100]}/>
+                        </>
                     }})
                 }
                 </svg>
