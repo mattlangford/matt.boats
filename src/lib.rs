@@ -70,7 +70,7 @@ impl Component for App {
     fn create(ctx: &Context<Self>) -> Self {
         log!("Creating app.");
 
-        let camera =  model::Camera::new();
+        let camera = model::Camera::new();
         let model = model::Model::load();
         let projected = model.project(&camera);
         Self {
@@ -126,7 +126,8 @@ impl Component for App {
                 }
             }
             Self::Message::Scroll(s) => {
-                self.camera.world_from_camera *= na::Translation3::<f32>::from(-1E-2 * s * geom::Vec3f::z());
+                self.camera.world_from_camera *=
+                    na::Translation3::<f32>::from(-1E-2 * s * geom::Vec3f::z());
                 // TODO: Don't project here
                 self.projected = self.model.project(&self.camera);
                 return true;
@@ -149,7 +150,9 @@ impl Component for App {
         );
 
         let onmousedown = ctx.link().callback(|event: MouseEvent| {
-            if event.which() == 3 { return Self::Message::MouseUp; } // right click
+            if event.which() == 3 {
+                return Self::Message::MouseUp;
+            } // right click
             Self::Message::MouseDown((event.client_x(), event.client_y()))
         });
         let onmousemove = ctx.link().callback(|event: MouseEvent| {
@@ -167,9 +170,9 @@ impl Component for App {
             None
         });
 
-        let onwheel = ctx.link().callback(|event: WheelEvent| {
-            Self::Message::Scroll(event.delta_y() as f32)
-        });
+        let onwheel = ctx
+            .link()
+            .callback(|event: WheelEvent| Self::Message::Scroll(event.delta_y() as f32));
 
         html! {
             <div id="container" style={style_string} {onmousedown} {onmousemove} {onmouseup} {onmouseout} {onwheel}>
@@ -179,15 +182,6 @@ impl Component for App {
                         <polygon points={format!("{:.3},{:.3} {:.3},{:.3} {:.3},{:.3}",
                                                  f.a.x, f.a.y, f.b.x, f.b.y, f.c.x, f.c.y)}
                                  fill="black" stroke="white" stroke-width=0.1/>
-                    }})
-                }
-                {
-                    for self.projected.faces.iter().skip(5).take(1).map(|f| { html! {
-                        <>
-                            <svg::Circle x={f.a.x} y={f.a.y} radius=1.0 fill={[255, 255, 255]} />
-                            <svg::Circle x={f.b.x} y={f.b.y} radius=1.0 fill={[200, 200, 200]}/>
-                            <svg::Circle x={f.c.x} y={f.c.y} radius=1.0 fill={[100, 100, 100]}/>
-                        </>
                     }})
                 }
                 </svg>

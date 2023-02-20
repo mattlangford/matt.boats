@@ -4,13 +4,12 @@ use crate::utils::log;
 use crate::utils::*;
 use itertools::izip;
 
-
 use nalgebra as na;
 
 use tobj;
 
-const MODEL: &[u8] = include_bytes!("/Users/mattlangford/Downloads/box.obj");
-const MATERIAL: &[u8] = include_bytes!("/Users/mattlangford/Downloads/box.mtl");
+const MODEL: &[u8] = include_bytes!("/Users/mattlangford/Downloads/boat.obj");
+const MATERIAL: &[u8] = include_bytes!("/Users/mattlangford/Downloads/boat.mtl");
 
 // TODO: make these references?
 pub struct Face2d {
@@ -96,16 +95,22 @@ impl Model {
         let mut center = geom::Vec3f::new(0.0, 0.0, 0.0);
         let normalization = 1.0 / points.len() as f32;
         for pt in &points {
-            center += normalization * pt;
+            center -= normalization * pt;
         }
 
         // Picked to look nice
         let rotation = na::Rotation3::<f32>::from_euler_angles(-1.026089, -0.95820314, -0.6794422);
 
+        log!(
+            "Loaded model with {} points and {} faces",
+            points.len(),
+            mesh.indices.len() / 3
+        );
+
         Model {
             mesh: mesh,
             points: points,
-            world_from_model: na::Transform3::identity() * na::Translation3::from(center),// * rotation,
+            world_from_model: na::Transform3::identity() * na::Translation3::from(center), // * rotation,
         }
     }
 
@@ -132,9 +137,12 @@ impl Model {
         let projection = camera.camera_matrix() * camera_from_model.matrix();
         let camera_position = camera.position();
 
-        let camera_points: Vec<geom::Vec3f> = self.points.iter()
+        let camera_points: Vec<geom::Vec3f> = self
+            .points
+            .iter()
             .map(|pt| camera_from_model * na::point!(pt.x, pt.y, pt.z))
-            .map(|pt| geom::Vec3f::new(pt.x, pt.y, pt.z)).collect();
+            .map(|pt| geom::Vec3f::new(pt.x, pt.y, pt.z))
+            .collect();
 
         let points3d: Vec<geom::Vec3f> = self
             .points
@@ -147,6 +155,7 @@ impl Model {
         let b_it = self.mesh.indices.iter().skip(1).step_by(3);
         let c_it = self.mesh.indices.iter().skip(2).step_by(3);
 
+        #[derive(PartialEq)]
         struct Face3d {
             projected_a: geom::Vec3f,
             projected_b: geom::Vec3f,
@@ -161,40 +170,72 @@ impl Model {
             model_c: geom::Vec3f,
         }
         let mut faces3d: Vec<Face3d> = izip!(a_it, b_it, c_it)
-            .map(|(&a, &b, &c)|
-                Face3d {
-                    projected_a : points3d[a as usize],
-                    projected_b : points3d[b as usize],
-                    projected_c : points3d[c as usize],
-                    camera_a : camera_points[a as usize],
-                    camera_b : camera_points[b as usize],
-                    camera_c : camera_points[c as usize],
-                    model_a : self.points[a as usize],
-                    model_b : self.points[b as usize],
-                    model_c : self.points[c as usize]
-                }
-            )
-            .filter(|f3d| f3d.projected_a.z > 0.0 && f3d.projected_b.z > 0.0 && f3d.projected_c.z > 0.0)
+            .map(|(&a, &b, &c)| Face3d {
+                projected_a: points3d[a as usize],
+                projected_b: points3d[b as usize],
+                projected_c: points3d[c as usize],
+                camera_a: camera_points[a as usize],
+                camera_b: camera_points[b as usize],
+                camera_c: camera_points[c as usize],
+                model_a: self.points[a as usize],
+                model_b: self.points[b as usize],
+                model_c: self.points[c as usize],
+            })
+            // .filter(|f3d| f3d.projected_a.z > 0.0 && f3d.projected_b.z > 0.0 && f3d.projected_c.z > 0.0)
             .collect();
 
         faces3d.sort_by_key(|f3d| {
-            let Face3d{camera_a: a, camera_b: b, camera_c: c, ..} = f3d;
+            let a = f3d.camera_a;
+            let b = f3d.camera_b;
+            let c = f3d.camera_c;
 
             let dist = ((a + b + c) / 3.0).norm();
 
             (1E3 * dist) as i32
         });
 
+        let to_2d = |f3d: &Face3d| -> Face2d {
+            let a = f3d.projected_a;
+            let b = f3d.projected_b;
+            let c = f3d.projected_c;
+            Face2d {
+                a: a.xy() / a.z,
+                b: b.xy() / b.z,
+                c: c.xy() / c.z,
+            }
+        };
+
+        let mut faces: Vec<Face2d> = faces3d
+            .iter()
+            .filter_map(|f3d_i| {
+                let f2d = to_2d(f3d_i);
+                let pt = (f2d.a + f2d.b + f2d.c) / 3.0;
+                let ray = geom::Line::new_ray(pt, geom::Vec2f::new(1.0, 1.0));
+
+                let mut intersect = faces3d.iter().filter(|f3d_j| {
+                    let f = to_2d(f3d_j);
+                    let circle = geom::Circle::wrap(&[f.a, f.b, f.c]);
+                    if (circle.center - pt).norm() >= circle.radius {
+                        return false;
+                    }
+
+                    geom::intersect_segment(&ray, &f.a, &f.c)
+                        .or(geom::intersect_segment(&ray, &f.b, &f.c))
+                        .or(geom::intersect_segment(&ray, &f.c, &f.a))
+                        .is_some()
+                });
+
+                if intersect.next().is_some() {
+                    Some(f2d)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
         ProjectedModel {
             points: points3d.iter().map(|pt| pt.xy() / pt.z).collect(),
-            faces: faces3d
-                .iter()
-                .map(|Face3d{projected_a: a, projected_b: b, projected_c: c, ..}| Face2d {
-                    a: a.xy() / a.z,
-                    b: b.xy() / b.z,
-                    c: c.xy() / c.z,
-                })
-                .collect(),
+            faces: faces,
         }
     }
 }

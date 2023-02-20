@@ -143,6 +143,16 @@ impl Circle {
             radius: radius,
         }
     }
+
+    pub fn wrap(polygon: &[Vec2f]) -> Circle {
+        let center = polygon.iter().sum::<Vec2f>() / polygon.len() as f32;
+        let radius = polygon
+            .iter()
+            .map(|pt| (pt - center).norm())
+            .max_by_key(|f| (1E3 * f) as u32)
+            .unwrap_or(1.0);
+        Circle::new(center, radius)
+    }
 }
 
 pub fn aabox_are_adjacent(lhs: &AABox, rhs: &AABox) -> bool {
