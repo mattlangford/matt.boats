@@ -178,9 +178,11 @@ impl Component for App {
             <div id="container" style={style_string} {onmousedown} {onmousemove} {onmouseup} {onmouseout} {onwheel}>
                 <svg width="100%" height="100%" viewBox={viewbox_string} preserveAspectRatio="none">
                 {
-                    for self.projected.faces.iter().rev().map(|f| { html! {
-                        <polygon points={format!("{:.3},{:.3} {:.3},{:.3} {:.3},{:.3}",
-                                                 f.a.x, f.a.y, f.b.x, f.b.y, f.c.x, f.c.y)}
+                    for self.projected.polys.iter().rev().map(|f| { html! {
+                        <polygon points={f.points(&self.projected.points)
+                                          .map(|p| format!("{}, {}", p.x, p.y))
+                                          .collect::<Vec<String>>()
+                                          .join(" ")}
                                  fill="black" stroke="white" stroke-width=0.1/>
                     }})
                 }
