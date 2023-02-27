@@ -20,7 +20,7 @@ pub struct Polygon {
 #[derive(Default)]
 pub struct ProjectedModel {
     pub points: Vec<geom::Vec2f>,
-    pub polys: Vec<Polygon>
+    pub polys: Vec<Polygon>,
 }
 
 #[derive(Debug)]
@@ -37,8 +37,26 @@ pub struct Model {
 }
 
 impl Polygon {
-    pub fn points<'a, T>(&self, buffer: &'a Vec<T>) -> impl Iterator<Item=&'a T> {
+    pub fn points<'a, T>(&self, buffer: &'a Vec<T>) -> impl Iterator<Item = &'a T> {
         buffer.iter().skip(self.start).take(self.count)
+    }
+
+    pub fn center<'a, T: std::iter::Sum<&'a T> + std::ops::Div<f32, Output = T>>(
+        &self,
+        buffer: &'a Vec<T>,
+    ) -> T {
+        self.points(&buffer).sum::<T>() / self.count as f32
+    }
+
+    // Returns center and normal vector
+    pub fn plane(&self, buffer: &Vec<geom::Vec3f>) -> (geom::Vec3f, geom::Vec3f) {
+        assert!(self.count > 2);
+
+        let a = buffer[self.start];
+        let b = buffer[self.start + 1];
+        let c = buffer[self.start + 2];
+        let normal = (a - c).cross(&(b - c)).normalize();
+        (c, normal)
     }
 }
 
@@ -48,7 +66,7 @@ impl Camera {
         let up = -geom::Vec3f::z();
         let rotation = na::Rotation3::face_towards(&dir, &up);
 
-        let shift = geom::Vec3f::new(-10.0, 0.0, 0.0);
+        let shift = geom::Vec3f::new(-5.0, 0.0, 0.0);
         let translation = na::Translation3::<f32>::from(shift);
         Camera {
             world_from_camera: na::Transform3::identity() * translation * rotation,
@@ -77,7 +95,6 @@ impl Camera {
     }
 }
 
-
 impl Model {
     pub fn load() -> Model {
         let mut model = MODEL.clone();
@@ -92,40 +109,37 @@ impl Model {
             .mesh
             .clone();
 
-        let x_it = mesh.positions.iter().step_by(3);
-        let y_it = mesh.positions.iter().skip(1).step_by(3);
-        let z_it = mesh.positions.iter().skip(2).step_by(3);
-        let points: Vec<geom::Vec3f> = izip!(x_it, y_it, z_it)
-            .map(|(&x, &y, &z)| geom::Vec3f::new(x, y, z))
-            .collect();
+        if mesh.face_arities.is_empty() {
+            mesh.face_arities = std::iter::repeat(3).take(mesh.indices.len() / 3).collect();
+        }
+
+        let mut index = 0;
+        let mut points =
+            Vec::<geom::Vec3f>::with_capacity(mesh.face_arities.iter().sum::<u32>() as usize);
+        let mut polys = Vec::<Polygon>::with_capacity(mesh.face_arities.len());
+        for arity in &mesh.face_arities {
+            let count = *arity as usize;
+            polys.push(Polygon {
+                start: points.len(),
+                count: count,
+            });
+
+            for _ in 0..count {
+                let idx = 3 * mesh.indices[index] as usize;
+                points.push(geom::Vec3f::new(
+                    mesh.positions[idx],
+                    mesh.positions[idx + 1],
+                    mesh.positions[idx + 2],
+                ));
+                index += 1;
+            }
+        }
 
         let mut center = geom::Vec3f::new(0.0, 0.0, 0.0);
         let normalization = 1.0 / points.len() as f32;
         for pt in &points {
             center -= normalization * pt;
         }
-
-        if mesh.face_arities.is_empty() {
-            mesh.face_arities = std::iter::repeat(3).take(mesh.indices.len() / 3).collect();
-        }
-
-        let mut index = 0;
-        let mut points = Vec::<geom::Vec3f>::with_capacity(mesh.face_arities.iter().sum::<u32>() as usize);
-        let mut polys = Vec::<Polygon>::with_capacity(mesh.face_arities.len());
-        for arity in &mesh.face_arities {
-            let count = *arity as usize;
-            polys.push(Polygon {
-                start: points.len(),
-                count: count
-            });
-
-            for _ in 0..count {
-                let idx = 3 * mesh.indices[index] as usize;
-                points.push(geom::Vec3f::new(mesh.positions[idx], mesh.positions[idx + 1], mesh.positions[idx + 2]));
-                index += 1;
-            }
-        }
-
 
         // Picked to look nice
         let rotation = na::Rotation3::<f32>::from_euler_angles(-1.026089, -0.95820314, -0.6794422);
@@ -165,27 +179,109 @@ impl Model {
     pub fn project(&self, camera: &Camera) -> ProjectedModel {
         let camera_from_world = camera.camera_from_world();
         let camera_from_model = camera_from_world * self.world_from_model;
-        let projection = camera.camera_matrix() * camera_from_model.matrix();
-        let camera_position = camera.position();
+        let projection_from_camera = camera.camera_matrix();
 
-        //let camera_points: Vec<geom::Vec3f> = self
-        //    .points
-        //    .iter()
-        //    .map(|pt| camera_from_model * na::point!(pt.x, pt.y, pt.z))
-        //    .map(|pt| geom::Vec3f::new(pt.x, pt.y, pt.z))
-        //    .collect();
-
-        let points2d: Vec<geom::Vec2f> = self
+        // In camera frame
+        let points3d: Vec<geom::Vec3f> = self
             .points
             .iter()
+            .map(|pt| na::point!(pt.x, pt.y, pt.z))
+            .map(|pt| camera_from_model.transform_point(&pt))
+            .map(|pt| na::vector!(pt.x, pt.y, pt.z))
+            .collect();
+
+        let points2d: Vec<geom::Vec2f> = points3d
+            .iter()
             .map(|pt| na::vector!(pt.x, pt.y, pt.z, 1.0))
-            .map(|pt| projection * pt)
+            .map(|pt| projection_from_camera * pt)
             .map(|pt| pt.xy() / pt.z)
             .collect();
 
+        // For each polygon, store the indices of the polys behind it
+        let mut behind = vec![std::collections::HashSet::<usize>::new(); self.polys.len()];
+        for (i, poly_i) in self.polys.iter().enumerate() {
+            // Ray origin assumed to be (0, 0, 0)
+            let dist_to_intersection =
+                |plane_pt: &geom::Vec3f, plane_normal: &geom::Vec3f, ray_dir: &geom::Vec3f| {
+                    let t = plane_normal.dot(&plane_pt) / plane_normal.dot(&ray_dir);
+                    t * ray_dir
+                };
+
+            let point3d = poly_i.center(&points3d);
+            let point2d = poly_i.center(&points2d);
+            let ray_dir = point3d.normalize();
+            let (plane_pt, plane_norm) = poly_i.plane(&points3d);
+            let dist_i = dist_to_intersection(&plane_pt, &plane_norm, &ray_dir).norm();
+
+            for (j, poly_j) in self.polys.iter().enumerate() {
+                if i == j {
+                    continue;
+                }
+
+                let points = poly_j
+                    .points(&points2d)
+                    .cloned()
+                    .collect::<Vec<geom::Vec2f>>();
+                if !geom::point_in_polygon(&point2d, &points[..]) {
+                    continue;
+                }
+
+                let (plane_pt, plane_norm) = poly_j.plane(&points3d);
+                let dist_j = dist_to_intersection(&plane_pt, &plane_norm, &ray_dir).norm();
+                if dist_j.is_nan() {
+                    log!("Got nan distance!");
+                    continue;
+                }
+                if dist_i < dist_j {
+                    behind[i].insert(j);
+                } else {
+                    behind[j].insert(i);
+                }
+            }
+        }
+
+        #[derive(Debug)]
+        struct Entry {
+            index: usize,
+            depth: usize,
+        }
+        let mut order: Vec<Entry> = (0..behind.len())
+            .map(|i| Entry { index: i, depth: 0 })
+            .collect();
+
+        let mut queue: std::collections::VecDeque<Entry> = (0..behind.len())
+            .map(|i| Entry { index: i, depth: 0 })
+            .collect();
+        while let Some(entry) = queue.pop_front() {
+            if queue.len() > 50 {
+                log!("Queue to big!");
+                break;
+            }
+            if entry.depth > 10 {
+                log!("Depth too big!");
+                break;
+            }
+            order[entry.index].depth = entry.depth;
+
+            let next_depth = entry.depth + 1;
+            for &j in &behind[entry.index] {
+                if order[j].depth < next_depth {
+                    queue.push_back(Entry {
+                        index: j,
+                        depth: next_depth,
+                    });
+                }
+            }
+        }
+        order.sort_by_key(|entry| entry.depth);
+
         ProjectedModel {
             points: points2d,
-            polys: self.polys.clone()
+            polys: order
+                .iter()
+                .map(|entry| self.polys[entry.index].clone())
+                .rev()
+                .collect(),
         }
     }
 }

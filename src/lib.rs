@@ -151,8 +151,9 @@ impl Component for App {
 
         let onmousedown = ctx.link().callback(|event: MouseEvent| {
             if event.which() == 3 {
+                // right click
                 return Self::Message::MouseUp;
-            } // right click
+            }
             Self::Message::MouseDown((event.client_x(), event.client_y()))
         });
         let onmousemove = ctx.link().callback(|event: MouseEvent| {
@@ -178,7 +179,7 @@ impl Component for App {
             <div id="container" style={style_string} {onmousedown} {onmousemove} {onmouseup} {onmouseout} {onwheel}>
                 <svg width="100%" height="100%" viewBox={viewbox_string} preserveAspectRatio="none">
                 {
-                    for self.projected.polys.iter().rev().map(|f| { html! {
+                    for self.projected.polys.iter().map(|f| { html! {
                         <polygon points={f.points(&self.projected.points)
                                           .map(|p| format!("{}, {}", p.x, p.y))
                                           .collect::<Vec<String>>()
