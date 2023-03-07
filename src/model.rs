@@ -66,7 +66,7 @@ impl Camera {
         let up = -geom::Vec3f::z();
         let rotation = na::Rotation3::face_towards(&dir, &up);
 
-        let shift = geom::Vec3f::new(-5.0, 0.0, 0.0);
+        let shift = geom::Vec3f::new(-4.0, 0.0, 0.0);
         let translation = na::Translation3::<f32>::from(shift);
         Camera {
             world_from_camera: na::Transform3::identity() * translation * rotation,
@@ -141,8 +141,9 @@ impl Model {
             center -= normalization * pt;
         }
 
-        // Picked to look nice
-        let rotation = na::Rotation3::<f32>::from_euler_angles(-1.026089, -0.95820314, -0.6794422);
+        for pt in &mut points {
+            *pt += center;
+        }
 
         log!(
             "Loaded model with {} points and {} faces",
@@ -157,7 +158,7 @@ impl Model {
             mesh: mesh,
             points: points,
             polys: polys,
-            world_from_model: na::Transform3::identity() * na::Translation3::from(center), // * rotation,
+            world_from_model: na::Transform3::identity(),
         }
     }
 
@@ -289,7 +290,12 @@ impl Model {
                 }
             }
         }
-        order.sort_by_key(|entry| (entry.depth, (1E3 * self.polys[entry.index].center(&points3d).z) as u32));
+        order.sort_by_key(|entry| {
+            (
+                entry.depth,
+                (1E3 * self.polys[entry.index].center(&points3d).z) as u32,
+            )
+        });
 
         ProjectedModel {
             points: points2d,
