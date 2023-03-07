@@ -49,6 +49,7 @@ pub struct App {
 
     drag: Option<MouseDrag>,
     momentum: geom::Vec2f,
+    rotation_rate: f32,
 
     projected: model::ProjectedModel,
 
@@ -82,6 +83,7 @@ impl Component for App {
             model: model,
             drag: None,
             momentum: geom::Vec2f::new(0.0, 0.0),
+            rotation_rate: -0.0873,
             projected: projected,
             tap_scroll: None,
             _frame_update_handle: {
@@ -108,12 +110,16 @@ impl Component for App {
 
                 self.momentum *= 0.0375 / dt;
 
-                if self.momentum.norm() > 1.0 {
-                    let pitch = -1E-3 * self.momentum.y;
-                    let yaw = 1E-3 * self.momentum.x;
+                if self.momentum.norm() > 1.0 || self.rotation_rate.abs() > 0.0 {
+                    let pitch = -1E-3 * self.momentum.y + self.rotation_rate * dt;
+                    let yaw = 1E-3 * self.momentum.x + self.rotation_rate * dt;
                     self.model
                         .rotate(na::Rotation3::<f32>::from_euler_angles(0.0, pitch, yaw));
 
+                    self.projected = self.model.project(&self.camera);
+                }
+
+                if self.tap_scroll.is_some() {
                     self.projected = self.model.project(&self.camera);
                 }
 
@@ -127,10 +133,12 @@ impl Component for App {
             }
             Self::Message::MouseMove(pt) => {
                 if let Some(drag) = &mut self.drag {
+                    self.rotation_rate = 0.0;
                     drag.current = (pt.x, pt.y);
                 }
             }
             Self::Message::PinchStart((pt0, pt1)) => {
+                return false;
                 self.tap_scroll = Some((pt0 - pt1).cast::<f32>().norm());
             }
             Self::Message::Pinch((pt0, pt1)) => {
@@ -196,7 +204,10 @@ impl Component for App {
         let ontouchstart = ctx.link().batch_callback(|event: TouchEvent| {
             if event.touches().length() == 1 {
                 let touch = event.touches().item(0).unwrap();
-                return Some(Self::Message::MouseDown(geom::Vec2i::new(touch.client_x(), touch.client_y())));
+                return Some(Self::Message::MouseDown(geom::Vec2i::new(
+                    touch.client_x(),
+                    touch.client_y(),
+                )));
             }
             if event.touches().length() == 2 {
                 let touch0 = event.touches().item(0).unwrap();
@@ -212,7 +223,10 @@ impl Component for App {
         let ontouchmove = ctx.link().batch_callback(|event: TouchEvent| {
             if event.touches().length() == 1 {
                 let touch = event.touches().item(0).unwrap();
-                return Some(Self::Message::MouseMove(geom::Vec2i::new(touch.client_x(), touch.client_y())));
+                return Some(Self::Message::MouseMove(geom::Vec2i::new(
+                    touch.client_x(),
+                    touch.client_y(),
+                )));
             }
             if event.touches().length() == 2 {
                 let touch0 = event.touches().item(0).unwrap();
@@ -224,12 +238,8 @@ impl Component for App {
             }
             None
         });
-        let ontouchend = ctx.link().callback(|_: TouchEvent| {
-            Self::Message::MouseUp
-        });
-        let ontouchcancel = ctx.link().callback(|_: TouchEvent| {
-            Self::Message::MouseUp
-        });
+        let ontouchend = ctx.link().callback(|_: TouchEvent| Self::Message::MouseUp);
+        let ontouchcancel = ctx.link().callback(|_: TouchEvent| Self::Message::MouseUp);
 
         html! {
             <div id="container" style={style_string} {onmousedown} {onmousemove} {onmouseup} {onmouseout} {onwheel}
