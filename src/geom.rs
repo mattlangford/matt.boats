@@ -4,6 +4,7 @@ use crate::utils::*;
 use nalgebra as na;
 use rand::distributions::Distribution;
 
+pub type Vec2i = na::Vector2<i32>;
 pub type Vec2f = na::Vector2<f32>;
 pub type Vec2d = na::Vector2<f64>;
 pub type Vec3f = na::Vector3<f32>;

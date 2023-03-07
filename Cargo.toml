@@ -18,8 +18,8 @@ tobj = "3.2.4"
 itertools = "0.8"
 
 [dependencies.web-sys]
-version = "0.3.57"
-features = ["HtmlDocument", "KeyEvent", "HtmlButtonElement"]
+version = "0.3.61"
+features = ["HtmlDocument", "KeyEvent", "HtmlButtonElement", "TouchEvent", "TouchList", "Touch"]
 
 [profile.release]
 debug = true
