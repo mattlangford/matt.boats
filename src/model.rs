@@ -8,10 +8,10 @@ use nalgebra as na;
 
 use tobj;
 
-const MODEL: &[u8] = include_bytes!("/Users/mattlangford/Downloads/box.obj");
-const MATERIAL: &[u8] = include_bytes!("/Users/mattlangford/Downloads/box.mtl");
+const MODEL: &[u8] = include_bytes!("/Users/mattlangford/Downloads/boat.obj");
+const MATERIAL: &[u8] = include_bytes!("/Users/mattlangford/Downloads/boat.mtl");
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Polygon {
     start: usize,
     count: usize,
@@ -150,6 +150,9 @@ impl Model {
             polys.len(),
         );
 
+        assert!(points.len() > 0);
+        assert!(polys.len() > 0);
+
         Model {
             mesh: mesh,
             points: points,
@@ -200,6 +203,10 @@ impl Model {
         // For each polygon, store the indices of the polys behind it
         let mut behind = vec![std::collections::HashSet::<usize>::new(); self.polys.len()];
         for (i, poly_i) in self.polys.iter().enumerate() {
+            if poly_i.count < 3 {
+                continue;
+            }
+
             // Ray origin assumed to be (0, 0, 0)
             let dist_to_intersection =
                 |plane_pt: &geom::Vec3f, plane_normal: &geom::Vec3f, ray_dir: &geom::Vec3f| {
@@ -233,8 +240,16 @@ impl Model {
                     continue;
                 }
                 if dist_i < dist_j {
+                    if behind[j].contains(&i) {
+                        // log!("{} and {} are mutually overlapping.", i, j);
+                        continue;
+                    }
                     behind[i].insert(j);
                 } else {
+                    if behind[i].contains(&j) {
+                        // log!("{} and {} are mutually overlapping.", i, j);
+                        continue;
+                    }
                     behind[j].insert(i);
                 }
             }
@@ -253,19 +268,20 @@ impl Model {
             .map(|i| Entry { index: i, depth: 0 })
             .collect();
         while let Some(entry) = queue.pop_front() {
-            if queue.len() > 50 {
-                log!("Queue to big!");
+            if queue.len() > 5000 {
+                log!("Queue too big!");
                 break;
             }
-            if entry.depth > 10 {
-                log!("Depth too big!");
-                break;
+            // Assume not more than a couple deep. I think this comes from mutally overlapping
+            // polygons.
+            if entry.depth > 5 {
+                continue;
             }
-            order[entry.index].depth = entry.depth;
 
             let next_depth = entry.depth + 1;
             for &j in &behind[entry.index] {
                 if order[j].depth < next_depth {
+                    order[j].depth = next_depth;
                     queue.push_back(Entry {
                         index: j,
                         depth: next_depth,
@@ -273,7 +289,7 @@ impl Model {
                 }
             }
         }
-        order.sort_by_key(|entry| entry.depth);
+        order.sort_by_key(|entry| (entry.depth, (1E3 * self.polys[entry.index].center(&points3d).z) as u32));
 
         ProjectedModel {
             points: points2d,
