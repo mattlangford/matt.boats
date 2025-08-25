@@ -1,0 +1,70 @@
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  margin: 2rem auto;
+  padding: 0 1rem;
+  line-height: 1.6;
+  font-size: 1.05rem;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+
+pre {
+  overflow-x: auto;
+  padding: 1rem;
+  border-radius: 10px;
+  background: #1e1e1e;
+  color: #f0f0f0;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+th, td {
+  border: 1px solid #ccc;
+  padding: .4rem .6rem;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 2rem;
+  border-bottom: 1px solid #ccc;
+  max-width: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+header .site-title a {
+  text-decoration: none;
+  font-weight: bold;
+  font-size: 1.2rem;
+  color: inherit;
+}
+
+main a {
+  color: inherit;
+  text-decoration: none; 
+}
+
+main a:hover {
+  text-decoration: underline;
+}
+
+main {
+  max-width: 70ch;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
