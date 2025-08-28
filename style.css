@@ -38,7 +38,9 @@ header .site-title a {
 main {
   flex: 1 0 auto;
   max-width: 70ch;
-  margin: 1rem auto;
+  margin: 0 auto;
+  margin-top: 1rem;
+  margin-bottom: 3rem;
   padding: 0 1rem;
   font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
 }
@@ -115,5 +117,13 @@ footer a {
   .post-date {
     text-align: left;
     opacity: 0.6;
+    order: 2;
+    margin-top: 0.2rem;
+  }
+  .post-title {
+    order: 1;
+  }
+  .post-row h1 {
+    margin-bottom: 0px;
   }
 }

@@ -2,7 +2,7 @@
 BRANCH_NAME=`git rev-parse --abbrev-ref HEAD`
 WS_FILES=`git status --porcelain | wc -l`
 
-if [[ $WS_FILES -eq 1 ]]; then
+if [[ $WS_FILES -gt 0 ]]; then
     echo "Dirty workspace! Commit all files and try again."
     exit 1
 fi

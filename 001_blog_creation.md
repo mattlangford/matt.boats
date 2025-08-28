@@ -25,5 +25,5 @@ I suspect it will be hard to keep the layout working on different devices and br
 
 ## Hosting
 The deployable pages are packaged into the dist/ folder, and pushed to the `deploy` branch on the [repo](https://github.com/mattlangford/matt.boats/tree/deploy).
-Github pages knows to watch this branch and will host the data from there.
-I managed to set up a custom domain through namecheap and hookup the cname records so it points to the hosted pages.
+Github pages knows to watch this branch and will kick off an action to host the data from there.
+I managed to set up a custom domain through namecheap and hookup the cname records so it points to the hosted pages. Although to be honest I don't recall exactly how.
