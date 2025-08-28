@@ -61,10 +61,13 @@ def render_with_template(template: str, title: str, body_html: str, updated_at: 
         .replace("{{ updated_at }}", updated_at.strftime("%Y-%m-%d %H:%M:%S"))
     )
 
-def find_markdown_files(dirs: list[Path]) -> list[Path]:
+def find_markdown_files(paths: list[Path]) -> list[Path]:
     files: list[Path] = []
-    for d in dirs:
-        files.extend(sorted(d.glob("*.md")))
+    for p in paths:
+        if p.is_file() and p.suffix.lower() == ".md":
+            files.append(p)
+        elif p.is_dir():
+            files.extend(sorted(p.glob("*.md")))
     return files
 
 def rewrite_image_srcs(html: str, md_dir: Path, out_dir: Path) -> str:
@@ -85,7 +88,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Build HTML pages from folders of Markdown into dist/ and create an index."
     )
-    parser.add_argument("folders", nargs="+", type=Path, help="Folders containing .md files (non-recursive)")
+    parser.add_argument("paths", nargs="+", type=Path, help="Folders or paths containing .md files (non-recursive)")
     args = parser.parse_args()
 
     template_path = Path("template.html")
@@ -93,7 +96,7 @@ def main():
         print(f"Error: template not found: {template_path}", file=sys.stderr)
         sys.exit(1)
 
-    md_files = find_markdown_files(args.folders)
+    md_files = find_markdown_files(args.paths)
     if not md_files:
         print("No .md files found in provided folders.", file=sys.stderr)
         sys.exit(1)
@@ -126,7 +129,7 @@ def main():
         print(f"Converted {md_path} to {out_file}")
 
     parts = ['<div class="post-list">']
-    for title, href, date in index_entries:
+    for title, href, date in reversed(index_entries):
         parts.append(
             f'<div class="post-row">'
             f'  <span class="post-date">{date or ""}</span>'

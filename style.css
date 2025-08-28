@@ -15,14 +15,17 @@ body {
   min-height: 100dvh;
 }
 
-header {
+header, footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 1rem 2rem;
-  border-bottom: 1px solid #ccc;
   width: 100%;
   box-sizing: border-box;
+}
+
+header {
+  justify-content: space-between;
+  border-bottom: 1px solid #ccc;
 }
 
 header .site-title a {
@@ -35,24 +38,19 @@ header .site-title a {
 main {
   flex: 1 0 auto;
   max-width: 70ch;
-  margin: 2rem auto;
+  margin: 1rem auto;
   padding: 0 1rem;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
 }
 
 footer {
-  display: flex;
-  align-items: center;
   justify-content: center;
-  padding: 1rem 2rem;
   border-top: 1px solid #ccc;
-  width: 100%;
-  box-sizing: border-box;
   font-size: 0.9rem;
   opacity: 0.75;
   flex-direction: column;
   background: inherit;
 }
-
 
 code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Blog Creation</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="site-title"><a href="index.html">matt.boats</a></div>
+  </header>
+  <main>
+    <h1 id="blog-creation"><a class="toclink" href="#blog-creation">Blog Creation</a></h1>
+<p><em>First post, please ignore</em></p>
+<p>I've been working on the format for this blog for a little bit. I figured it'd make a good first post!</p>
+<p>I'm aiming for a couple things with this:</p>
+<ol>
+<li>Very simple interface</li>
+<li>Statically hosted with no javascript</li>
+<li>Low overhead for writing shortish blogs</li>
+<li>It's something to do</li>
+</ol>
+<h2 id="layout"><a class="toclink" href="#layout">Layout</a></h2>
+<p>The general idea is that I'll maintain a set of markdown files -- one for each post. A python script (AI generated <code>make_page.py</code>) can scrape those files and generate a set of html pages. The index page is also gneerated, by collecting the title from the markdown pages and some metadata at the top of the file.</p>
+<p>I've elected to keep each blog post in the root folder, or if there is associated data, in folders that follow an arbitrary <code>001_name</code> structure.</p>
+<p>I suspect it will be hard to keep the layout working on different devices and browsers (including light/dark mode). I'll only be testing on Safari on my Mac.</p>
+<h3 id="testing"><a class="toclink" href="#testing">Testing</a></h3>
+<p>Here are some examples that I use to test the markdown generation. There are code snippets</p>
+<div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">get_hello_world</span><span class="p">():</span>
+    <span class="k">return</span> <span class="s2">&quot;hello world!&quot;</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">get_hello_world</span><span class="p">())</span>
+</code></pre></div>
+
+<p>and <code>inline code snippets</code>. I've got lists of all kinds, like numbered</p>
+<ol>
+<li>Number 1</li>
+<li>Number 2</li>
+</ol>
+<p>or bulletted</p>
+<ul>
+<li>Bullet 1</li>
+<li>Bullet 2</li>
+</ul>
+<p>I can <a href="index.html">link to internal things</a>, or <a href="https://duckduckgo.com">link to external ones</a>.</p>
+<p>Images should work too...</p>
+<p><img alt="Thumbs up for a job well done." src="https://purepng.com/public/uploads/large/thumbs-up-mv6.png"></p>
+<h2 id="hosting"><a class="toclink" href="#hosting">Hosting</a></h2>
+<p>The deployable pages are packaged into the dist/ folder, and pushed to the <code>deploy</code> branch on the <a href="https://github.com/mattlangford/matt.boats/tree/deploy">repo</a>.
+Github pages knows to watch this branch and will host the data from there.
+I managed to set up a custom domain through namecheap and hookup the cname records so it points to the hosted pages.</p>
+  </main>
+  <footer>
+    <div>Website <a href="https://github.com/mattlangford/matt.boats">repo</a></div>
+    <div>Page updated at 2025-08-27 23:50:18</div>
+    <div>Contact me at <a href="mailto:contact@matt.boats">contact@matt.boats</a></div>
+  </footer>
+</body>
+</html>
