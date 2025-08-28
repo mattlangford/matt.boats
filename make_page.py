@@ -6,13 +6,27 @@ from pathlib import Path
 import argparse
 import shutil
 import markdown
+from datetime import datetime
 import os
 
-def read_text(p: Path) -> str:
-    return p.read_text(encoding="utf-8")
+def parse_front_matter(md_text: str) -> tuple[dict[str, str], str]:
+    lines = md_text.splitlines()
+    meta: dict[str, str] = {}
 
-def write_text(p: Path, s: str) -> None:
-    p.write_text(s, encoding="utf-8")
+    if lines and lines[0].strip() == "---":
+        collected = []
+        for i in range(1, len(lines)):
+            if lines[i].strip() == "---":
+                # done, return dict and rest
+                for entry in collected:
+                    if ":" in entry:
+                        k, v = entry.split(":", 1)
+                        meta[k.strip()] = v.strip()
+                remaining = "\n".join(lines[i + 1 :])
+                return meta, remaining
+            collected.append(lines[i])
+    # no front matter
+    return {}, md_text
 
 def extract_title(md_text: str, fallback: str) -> str:
     for line in md_text.splitlines():
@@ -39,11 +53,12 @@ def slugify(text: str) -> str:
     text = re.sub(r"[^a-zA-Z0-9]+", "-", text).strip("-").lower()
     return text or "page"
 
-def render_with_template(template: str, title: str, body_html: str) -> str:
+def render_with_template(template: str, title: str, body_html: str, updated_at: datetime) -> str:
     return (
         template
         .replace("{{ title }}", title)
         .replace("{{ content }}", body_html)
+        .replace("{{ updated_at }}", updated_at.strftime("%Y-%m-%d %H:%M:%S"))
     )
 
 def find_markdown_files(dirs: list[Path]) -> list[Path]:
@@ -83,7 +98,7 @@ def main():
         print("No .md files found in provided folders.", file=sys.stderr)
         sys.exit(1)
 
-    template = read_text(template_path)
+    template = template_path.read_text(encoding="utf-8")
     out_dir = Path("dist")
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -91,27 +106,37 @@ def main():
     if style_src.exists():
         shutil.copy2(style_src, out_dir / "style.css")
 
-    index_entries: list[tuple[str, str]] = []
+    index_entries: list[tuple[str, str, str]] = []
 
     for md_path in md_files:
-        md_text = read_text(md_path)
+        md_text = md_path.read_text(encoding="utf-8")
+        metadata, md_text = parse_front_matter(md_text)
         title = extract_title(md_text, fallback=md_path.stem)
         slug = slugify(title)
 
+        updated_at = datetime.fromtimestamp(os.path.getmtime(md_path))
+
         body_html = convert_markdown(md_text)
         body_html = rewrite_image_srcs(body_html, md_path.parent, out_dir)
-        final_html = render_with_template(template, title=title, body_html=body_html)
+        final_html = render_with_template(template, title=title, body_html=body_html, updated_at=updated_at)
 
         out_file = out_dir / f"{slug}.html"
-        write_text(out_file, final_html)
-        index_entries.append((title, out_file.name))
+        out_file.write_text(final_html, encoding="utf-8")
+        index_entries.append((title, out_file.name, metadata.get("date", None)))
         print(f"Converted {md_path} to {out_file}")
 
-    parts = []
-    for title, href in index_entries:
-        parts.append(f'<b><a href="{href}">{title}</a></b><br><br>')
-    index_html = render_with_template(template, title="Index", body_html="\n".join(parts))
-    write_text(out_dir / "index.html", index_html)
+    parts = ['<div class="post-list">']
+    for title, href, date in index_entries:
+        parts.append(
+            f'<div class="post-row">'
+            f'  <span class="post-date">{date or ""}</span>'
+            f'  <h1><a class="post-title" href="{href}">{title}</a></h1>'
+            f'</div>'
+        )
+    parts.append('</div>')
+    index_html = render_with_template(template, title="Index", body_html="\n".join(parts), updated_at=datetime.now())
+    index = out_dir / "index.html"
+    index.write_text(index_html, encoding="utf-8")
     print(f"Wrote index to {out_dir / 'index.html'}")
 
 if __name__ == "__main__":
