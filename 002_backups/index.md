@@ -4,7 +4,7 @@ date: 2025-08-28
 
 # Backups
 
-Over the past year, been self hosting backups of my photos, music, computers, phone, and projects.
+Over the past year, I have been self hosting backups of my photos, music, computers, phone, and projects.
 This data (where photos and laptop backups are over the past 5 years) only comprises ~500GB of data, which makes me a little sad.
 
 The motivations for self hosting are:
