@@ -9,6 +9,7 @@ Over the past year, I have been self hosting backups of my photos, music, comput
 This data (where photos and laptop backups are over the past 5 years) only comprises ~500GB of data, which makes me a little sad.
 
 The motivations for self hosting are:
+
  * It's kind of cool and fun
  * I save $10 a month (and don't think too much about how the cost of my time)
  * Not having to give google/etc all of my data 
