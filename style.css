@@ -74,6 +74,15 @@ th, td {
 
 main a {
   color: inherit;
+}
+
+main h1 a {
+  text-decoration: none; 
+}
+main h2 a {
+  text-decoration: none; 
+}
+main h3 a {
   text-decoration: none; 
 }
 

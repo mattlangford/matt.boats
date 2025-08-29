@@ -102,15 +102,14 @@ def main():
         sys.exit(1)
 
     template = template_path.read_text(encoding="utf-8")
-    out_dir = Path("dist")
-    out_dir.mkdir(parents=True, exist_ok=True)
+    dist_dir = Path("dist")
+    dist_dir.mkdir(parents=True, exist_ok=True)
 
     style_src = Path("style.css")
     if style_src.exists():
-        shutil.copy2(style_src, out_dir / "style.css")
+        shutil.copy2(style_src, dist_dir / "style.css")
 
     index_entries: list[tuple[str, str, str]] = []
-
     for md_path in md_files:
         md_text = md_path.read_text(encoding="utf-8")
         metadata, md_text = parse_front_matter(md_text)
@@ -119,13 +118,16 @@ def main():
 
         updated_at = datetime.fromtimestamp(os.path.getmtime(md_path))
 
+        out_dir = dist_dir / md_path.parent
+        out_dir.mkdir(parents=True, exist_ok=True)
+
         body_html = convert_markdown(md_text)
         body_html = rewrite_image_srcs(body_html, md_path.parent, out_dir)
         final_html = render_with_template(template, title=title, body_html=body_html, updated_at=updated_at)
 
         out_file = out_dir / f"{slug}.html"
         out_file.write_text(final_html, encoding="utf-8")
-        index_entries.append((title, out_file.name, metadata.get("date", None)))
+        index_entries.append((title, out_file, metadata.get("date", None)))
         print(f"Converted {md_path} to {out_file}")
 
     parts = ['<div class="post-list">']
@@ -133,14 +135,14 @@ def main():
         parts.append(
             f'<div class="post-row">'
             f'  <span class="post-date">{date or ""}</span>'
-            f'  <h1><a class="post-title" href="{href}">{title}</a></h1>'
+            f'  <h1><a class="post-title" href="{href.relative_to("dist/")}">{title}</a></h1>'
             f'</div>'
         )
     parts.append('</div>')
     index_html = render_with_template(template, title="Index", body_html="\n".join(parts), updated_at=datetime.now())
-    index = out_dir / "index.html"
+    index = dist_dir / "index.html"
     index.write_text(index_html, encoding="utf-8")
-    print(f"Wrote index to {out_dir / 'index.html'}")
+    print(f"Wrote index to {dist_dir / 'index.html'}")
 
 if __name__ == "__main__":
     main()

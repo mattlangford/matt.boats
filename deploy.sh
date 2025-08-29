@@ -9,7 +9,7 @@ fi
 
 git checkout deploy
 git reset --hard $BRANCH_NAME
-cp dist/* .
+cp -r dist/* .
 git add .
 git commit --amend --no-edit
 git push origin deploy -f
