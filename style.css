@@ -37,12 +37,15 @@ header .site-title a {
 
 main {
   flex: 1 0 auto;
-  max-width: 70ch;
+  min-width: 0;
+  width: min(100%, 70ch);
   margin: 0 auto;
   margin-top: 1rem;
   margin-bottom: 3rem;
   padding: 0 1rem;
   font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  overflow-wrap: anywhere;
+  box-sizing: border-box;
 }
 
 footer {

@@ -63,9 +63,8 @@ For status updates, I generate a page every few minutes which contains usage inf
 This runs with docker compose inside of the Storage VM and I'm able to connect to the open port inside my tailnet.
 
 Make sure to keep snapshots or other backups since they say
-```
-Do not use it as the only way to store your photos and videos
-```
+
+> Do not use it as the only way to store your photos and videos
 
 ### Navidrome
 [Navidrome](https://www.navidrome.org) seemed to be a good option for music streaming. It uses the open source Subsonic protocol for querying album/music data - which comes with a good number of open source front ends for the web/iOS.
