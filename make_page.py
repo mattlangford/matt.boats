@@ -97,12 +97,9 @@ def main():
         sys.exit(1)
 
     md_files = find_markdown_files(args.paths)
-    if not md_files:
-        print("No .md files found in provided folders.", file=sys.stderr)
-        sys.exit(1)
 
     template = template_path.read_text(encoding="utf-8")
-    dist_dir = Path("dist")
+    dist_dir = Path("dist/")
     dist_dir.mkdir(parents=True, exist_ok=True)
 
     style_src = Path("style.css")
@@ -135,7 +132,7 @@ def main():
         parts.append(
             f'<div class="post-row">'
             f'  <span class="post-date">{date or ""}</span>'
-            f'  <h1><a class="post-title" href="{href.relative_to("dist/")}">{title}</a></h1>'
+            f'  <h1><a class="post-title" href="{href.relative_to(dist_dir)}">{title}</a></h1>'
             f'</div>'
         )
     parts.append('</div>')
