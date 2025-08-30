@@ -40,7 +40,7 @@ def convert_markdown(md_text: str) -> str:
     md = markdown.Markdown(
         extensions=exts,
         extension_configs={
-            "codehilite": {"guess_lang": True, "noclasses": False, "pygments_style": "default"},
+            "codehilite": {"guess_lang": True, "noclasses": True, "pygments_style": "default"},
             "toc": {"permalink": False, "anchorlink": True, "title": "Table of contents"},
         },
         output_format="html5",
@@ -71,15 +71,33 @@ def find_markdown_files(paths: list[Path]) -> list[Path]:
     return files
 
 def rewrite_image_srcs(html: str, md_dir: Path, out_dir: Path) -> str:
-    # Repoint <img src="..."> to paths relative to dist/, targeting the original files under md_dir
+    # Repoint <img src="..."> to symlinks inside out_dir
     def repl(m: re.Match) -> str:
         prefix, src, suffix = m.group(1), m.group(2), m.group(3)
         if src.startswith(("http://", "https://", "data:")):
             return m.group(0)
+
+        # Source file under md_dir
         target = (md_dir / src).resolve()
-        assert(target.exists() and target.is_file())
-        rel = os.path.relpath(target, out_dir)
-        return f'{prefix}{rel}{suffix}'
+        assert target.exists() and target.is_file(), f"Image not found: {target}"
+
+        # Place symlink inside out_dir with same relative path
+        symlink_path = (out_dir / src).resolve()
+
+        # Ensure subdirectories exist
+        symlink_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Remove stale symlink or file if present
+        if symlink_path.exists() or symlink_path.is_symlink():
+            symlink_path.unlink()
+
+        # Create relative symlink (better portability)
+        rel_target = os.path.relpath(target, symlink_path.parent)
+        symlink_path.symlink_to(rel_target)
+
+        # HTML should point to the symlink path relative to out_dir
+        rel_html = os.path.relpath(symlink_path, out_dir)
+        return f"{prefix}{rel_html}{suffix}"
 
     pattern = re.compile(r'(<img\b[^>]*?\bsrc=["\'])([^"\']+)(["\'])', flags=re.I)
     return pattern.sub(repl, html)

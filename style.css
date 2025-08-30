@@ -58,7 +58,8 @@ footer {
 }
 
 code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  padding: 0.5em 0 0.5em 1em;
+  display: block;
 }
 
 img {
