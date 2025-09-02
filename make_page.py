@@ -40,7 +40,7 @@ def convert_markdown(md_text: str) -> str:
     md = markdown.Markdown(
         extensions=exts,
         extension_configs={
-            "codehilite": {"guess_lang": True, "noclasses": True, "pygments_style": "default"},
+            "codehilite": {"guess_lang": False, "noclasses": True, "pygments_style": "default"},
             "toc": {"permalink": False, "anchorlink": True, "title": "Table of contents"},
         },
         output_format="html5",
