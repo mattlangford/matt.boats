@@ -53,12 +53,11 @@ def slugify(text: str) -> str:
     text = re.sub(r"[^a-zA-Z0-9]+", "-", text).strip("-").lower()
     return text or "page"
 
-def render_with_template(template: str, title: str, body_html: str, updated_at: datetime) -> str:
+def render_with_template(template: str, title: str, body_html: str) -> str:
     return (
         template
         .replace("{{ title }}", title)
         .replace("{{ content }}", body_html)
-        .replace("{{ updated_at }}", updated_at.strftime("%Y-%m-%d %H:%M:%S"))
     )
 
 def find_markdown_files(paths: list[Path]) -> list[Path]:
@@ -131,14 +130,12 @@ def main():
         title = extract_title(md_text, fallback=md_path.stem)
         slug = slugify(title)
 
-        updated_at = datetime.fromtimestamp(os.path.getmtime(md_path))
-
         out_dir = dist_dir / md_path.parent
         out_dir.mkdir(parents=True, exist_ok=True)
 
         body_html = convert_markdown(md_text)
         body_html = rewrite_image_srcs(body_html, md_path.parent, out_dir)
-        final_html = render_with_template(template, title=title, body_html=body_html, updated_at=updated_at)
+        final_html = render_with_template(template, title=title, body_html=body_html)
 
         out_file = out_dir / f"{slug}.html"
         out_file.write_text(final_html, encoding="utf-8")
@@ -154,7 +151,7 @@ def main():
             f'</div>'
         )
     parts.append('</div>')
-    index_html = render_with_template(template, title="Index", body_html="\n".join(parts), updated_at=datetime.now())
+    index_html = render_with_template(template, title="Index", body_html="\n".join(parts))
     index = dist_dir / "index.html"
     index.write_text(index_html, encoding="utf-8")
     print(f"Wrote index to {dist_dir / 'index.html'}")
