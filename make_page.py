@@ -7,7 +7,9 @@ import argparse
 import shutil
 import markdown
 from datetime import datetime
+import latex2mathml.converter
 import os
+
 
 def parse_front_matter(md_text: str) -> tuple[dict[str, str], str]:
     lines = md_text.splitlines()
@@ -36,12 +38,12 @@ def extract_title(md_text: str, fallback: str) -> str:
     return fallback
 
 def convert_markdown(md_text: str) -> str:
-    exts = ["fenced_code", "codehilite", "tables", "attr_list", "md_in_html", "toc"]
     md = markdown.Markdown(
-        extensions=exts,
+        extensions=["fenced_code", "codehilite", "tables", "attr_list", "md_in_html", "toc", "pymdownx.arithmatex"],
         extension_configs={
             "codehilite": {"guess_lang": False, "noclasses": False, "pygments_style": "default"},
-            "toc": {"permalink": False, "anchorlink": True, "title": "Table of contents"},
+            "toc": {"permalink": False, "anchorlink": True},
+            "pymdownx.arithmatex": {"generic": True},
         },
         output_format="html5",
     )
@@ -68,6 +70,20 @@ def find_markdown_files(paths: list[Path]) -> list[Path]:
         elif p.is_dir():
             files.extend(sorted(p.glob("*.md")))
     return files
+
+def render_mathml(html: str) -> str:
+    def _repl(m: re.Match) -> str:
+        try:
+            return latex2mathml.converter.convert(m.group("tex"))
+        except Exception:
+            return m.group(0)     # leave original if conversion fails
+
+    def _repl_block(m: re.Match) -> str:
+        return _repl(m).replace("<math", '<math display="block"', 1)
+
+    html = re.compile(r'<div class="arithmatex">\s*\\\[\s*(?P<tex>.*?)\s*\\\]\s*</div>', re.DOTALL).sub(_repl_block, html)
+    return re.compile(r'<span class="arithmatex">\s*\\\(\s*(?P<tex>.*?)\s*\\\)\s*</span>', re.DOTALL).sub(_repl, html)
+
 
 def rewrite_image_srcs(html: str, md_dir: Path, out_dir: Path) -> str:
     # Repoint <img src="..."> to symlinks inside out_dir
@@ -134,6 +150,7 @@ def main():
         out_dir.mkdir(parents=True, exist_ok=True)
 
         body_html = convert_markdown(md_text)
+        body_html = render_mathml(body_html)
         body_html = rewrite_image_srcs(body_html, md_path.parent, out_dir)
         final_html = render_with_template(template, title=title, body_html=body_html)
 
