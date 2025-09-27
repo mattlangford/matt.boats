@@ -9,7 +9,7 @@ import markdown
 from datetime import datetime
 import latex2mathml.converter
 import os
-
+import subprocess
 
 def parse_front_matter(md_text: str) -> tuple[dict[str, str], str]:
     lines = md_text.splitlines()
@@ -55,10 +55,11 @@ def slugify(text: str) -> str:
     text = re.sub(r"[^a-zA-Z0-9]+", "-", text).strip("-").lower()
     return text or "page"
 
-def render_with_template(template: str, title: str, body_html: str) -> str:
+def render_with_template(template: str, title: str, body_html: str, commit: str) -> str:
     return (
         template
         .replace("{{ title }}", title)
+        .replace("{{ commit }}", commit)
         .replace("{{ content }}", body_html)
     )
 
@@ -83,7 +84,6 @@ def render_mathml(html: str) -> str:
 
     html = re.compile(r'<div class="arithmatex">\s*\\\[\s*(?P<tex>.*?)\s*\\\]\s*</div>', re.DOTALL).sub(_repl_block, html)
     return re.compile(r'<span class="arithmatex">\s*\\\(\s*(?P<tex>.*?)\s*\\\)\s*</span>', re.DOTALL).sub(_repl, html)
-
 
 def rewrite_image_srcs(html: str, md_dir: Path, out_dir: Path) -> str:
     # Repoint <img src="..."> to symlinks inside out_dir
@@ -116,6 +116,15 @@ def rewrite_image_srcs(html: str, md_dir: Path, out_dir: Path) -> str:
 
     pattern = re.compile(r'(<img\b[^>]*?\bsrc=["\'])([^"\']+)(["\'])', flags=re.I)
     return pattern.sub(repl, html)
+
+def last_commit_for_file(path):
+    result = subprocess.run(
+        ["git", "log", "-n", "1", "--pretty=format:%H", "--", path],
+        capture_output=True,
+        text=True,
+        check=True
+    )
+    return result.stdout.strip()[:7]
 
 def main():
     parser = argparse.ArgumentParser(
@@ -152,7 +161,7 @@ def main():
         body_html = convert_markdown(md_text)
         body_html = render_mathml(body_html)
         body_html = rewrite_image_srcs(body_html, md_path.parent, out_dir)
-        final_html = render_with_template(template, title=title, body_html=body_html)
+        final_html = render_with_template(template, title=title, body_html=body_html, commit=last_commit_for_file(md_path))
 
         out_file = out_dir / f"{slug}.html"
         out_file.write_text(final_html, encoding="utf-8")
@@ -168,7 +177,7 @@ def main():
             f'</div>'
         )
     parts.append('</div>')
-    index_html = render_with_template(template, title="Index", body_html="\n".join(parts))
+    index_html = render_with_template(template, title="Index", body_html="\n".join(parts), commit=last_commit_for_file(template_path))
     index = dist_dir / "index.html"
     index.write_text(index_html, encoding="utf-8")
     print(f"Wrote index to {dist_dir / 'index.html'}")
