@@ -12,7 +12,7 @@ I also have kind of an odd listening pattern where I tend to stick to full album
 This frustration flared up around the same time as I got into the idea of self hosting my media. The solution was easy - collect and host my own music collection!
 
 ## Backend
-As I mentioned in my [backups post](../002_backups/index.md), I started using [immich](https://immich.app) to host images and I was hoping to find something similar for music. A few projects came up in my search
+As I mentioned in my [backups post](http://localhost:8000/002_backups/backups.html), I started using [immich](https://immich.app) to host images and I was hoping to find something similar for music. A few projects came up in my search
 
  * [Jellyfin](https://jellyfin.org) looked like it did a lot more than just music - a lot of things that I didn't think I'd need
  * [Plex](https://www.plex.tv) seemed more geared to video content
