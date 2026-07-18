@@ -2,7 +2,7 @@
 
 Generate pages using
 ```bash
-$ rm -r dist/ && python3.12 make_page.py 0*
+$ rm -r dist/; python3.13 make_page.py 0*
 ```
 
 Then host
