@@ -85,8 +85,8 @@ def render_mathml(html: str) -> str:
     html = re.compile(r'<div class="arithmatex">\s*\\\[\s*(?P<tex>.*?)\s*\\\]\s*</div>', re.DOTALL).sub(_repl_block, html)
     return re.compile(r'<span class="arithmatex">\s*\\\(\s*(?P<tex>.*?)\s*\\\)\s*</span>', re.DOTALL).sub(_repl, html)
 
-def rewrite_image_srcs(html: str, md_dir: Path, out_dir: Path) -> str:
-    # Repoint <img src="..."> to symlinks inside out_dir
+def rewrite_image_srcs(html: str, md_dir: Path, asset_out_dir: Path, page_out_dir: Path) -> str:
+    # Repoint <img src="..."> to symlinks inside asset_out_dir.
     def repl(m: re.Match) -> str:
         prefix, src, suffix = m.group(1), m.group(2), m.group(3)
         if src.startswith(("http://", "https://", "data:")):
@@ -96,8 +96,8 @@ def rewrite_image_srcs(html: str, md_dir: Path, out_dir: Path) -> str:
         target = (md_dir / src).resolve()
         assert target.exists() and target.is_file(), f"Image not found: {target}"
 
-        # Place symlink inside out_dir with same relative path
-        symlink_path = (out_dir / src).resolve()
+        # Place symlink inside asset_out_dir with same relative path
+        symlink_path = (asset_out_dir / src).resolve()
 
         # Ensure subdirectories exist
         symlink_path.parent.mkdir(parents=True, exist_ok=True)
@@ -110,12 +110,16 @@ def rewrite_image_srcs(html: str, md_dir: Path, out_dir: Path) -> str:
         rel_target = os.path.relpath(target, symlink_path.parent)
         symlink_path.symlink_to(rel_target)
 
-        # HTML should point to the symlink path relative to out_dir
-        rel_html = os.path.relpath(symlink_path, out_dir)
+        # HTML should point to the symlink path relative to page_out_dir.
+        rel_html = os.path.relpath(symlink_path, page_out_dir)
         return f"{prefix}{rel_html}{suffix}"
 
     pattern = re.compile(r'(<img\b[^>]*?\bsrc=["\'])([^"\']+)(["\'])', flags=re.I)
     return pattern.sub(repl, html)
+
+def asset_output_dir(dist_dir: Path, md_dir: Path) -> Path:
+    # Keep source-folder structure for assets to avoid filename collisions.
+    return dist_dir / md_dir
 
 def last_commit_for_file(path):
     result = subprocess.run(
@@ -155,15 +159,16 @@ def main():
         title = extract_title(md_text, fallback=md_path.stem)
         slug = slugify(title)
 
-        out_dir = dist_dir / md_path.parent
-        out_dir.mkdir(parents=True, exist_ok=True)
+        page_out_dir = dist_dir
+        assets_out_dir = asset_output_dir(dist_dir, md_path.parent)
+        assets_out_dir.mkdir(parents=True, exist_ok=True)
 
         body_html = convert_markdown(md_text)
         body_html = render_mathml(body_html)
-        body_html = rewrite_image_srcs(body_html, md_path.parent, out_dir)
+        body_html = rewrite_image_srcs(body_html, md_path.parent, assets_out_dir, page_out_dir)
         final_html = render_with_template(template, title=title, body_html=body_html, commit=last_commit_for_file(md_path))
 
-        out_file = out_dir / f"{slug}.html"
+        out_file = page_out_dir / f"{slug}.html"
         out_file.write_text(final_html, encoding="utf-8")
         index_entries.append((title, out_file, metadata.get("date", None)))
         print(f"Converted {md_path} to {out_file}")
